@@ -1,0 +1,59 @@
+﻿CPT,Description,AllowedAmount
+10060,Drainage of skin abscess,$150.00 
+10140,Drainage of hematoma,$220.00 
+11042,Debride skin or tissue,$160.00 
+11043,Debride tissue muscle fascia 20 SQ ,$300.00 
+20680,Remove support implant,$845.00 
+27630,Removal tendon lesion,$750.00 
+27635,Remove lower leg bone lesion,$770.00 
+27654,Repair of achilles tendon,$935.00 
+27658,Repair of leg tendon each,$495.00 
+27659,Repair of leg tendon each,$750.00 
+27685,Revision of lower leg tendon,$890.00 
+27687,Revision of calf tendon,$600.00 
+27690,Revise lower leg tendon,$835.00 
+27691,Revise lower leg tendon,"$1,140.00 "
+27695,Repair of ankle ligament,$630.00 
+27698,Repair of ankle ligaments,$845.00 
+28002,Treatment of foot infection,$600.00 
+28005,Treatment of foot bone lesion,$770.00 
+28008,Incision of foot  fascia,$580.00 
+28010,Incision of toe tendon,$300.00 
+28090,Removal of foot lesion,$635.00 
+28092,Removal of toe lesions,$570.00 
+28100,Removal of ankle/heel lesion,$810.00 
+28104,Removal of foot lesion,$705.00 
+28108,Removal of toe lesions,$600.00 
+28110,Partial removal of metatarsal,$625.00 
+28118,Removal of heel bone,$790.00 
+28119,Removal of heel spur,$710.00 
+28120,Partial removal of ankle/heel,$910.00 
+28122,Partial rmeoval of foot bone,$805.00 
+28153,Partial removal of toe,$560.00 
+28160,Partial removal of toe,$565.00 
+28285,Repair hammertoe,$720.00 
+28288,Partial removal of foot bone,$815.00 
+28289,Repair hallux rigidus,$985.00 
+28291,Correction Hallus Rigidus with implant,"$1,250.00 "
+28292,Correction of bunion,"$1,061.00 "
+28296,Correction of bunion,"$1,210.00 "
+28297,Correction of bunion,"$1,385.00 "
+28298,Correction of bunion,"$1,125.00 "
+28299,Correction of bunion double osteotomy,"$1,335.00 "
+28300,Incision of heel bone,"$1,015.00 "
+28308,Incision of metatarsal,$755.00 
+28310,Revision of big toe,$730.00 
+28313,repair deformity of toe,$715.00 
+28315,Removal of sesamoid bone,$645.00 
+28485,Treat metatarsal fracture,$705.00 
+28615,Repair foot dislocation,"$1,040.00 "
+28725,Fusion of foot bones,"$1,020.00 "
+28730,Fusion of foot bones,$970.00 
+28740,Fusion of foot bones,"$1,100.00 "
+28750,Fusion of big toe joint,"$1,090.00 "
+28755,Fusion of big toe joint,$685.00 
+28760,Fusion of big toe joint,"$1,050.00 "
+28805,Amputation thru metatarsal,$975.00 
+28810,Amutation of toe and metatarsal,$575.00 
+28825,Partial amputaiton of toe,$730.00 
+29898,Ankle arthroscopy,$745.00 
