@@ -1,4 +1,9 @@
-// app.js (FIXED: robust CSV parsing + currency cleanup + CPT normalization + missing CPT warnings)
+// app.js (FIXED: chooses the correct Allowed column by scoring candidates)
+// - Robust CSV parsing (quoted commas)
+// - Normalizes CPTs (27685.0 -> 27685)
+// - Parses money with $, commas, parentheses
+// - Auto-selects the "Allowed" column that actually has numeric values
+// - Warn banner if fee schedule missing or CPT not found
 
 const state = {
   feeMap: new Map(),        // CPT -> { desc, allowed }
@@ -32,22 +37,38 @@ function normalizeHeader(h){
 }
 
 function normalizeCpt(raw){
-  // Handles: "27685", "27685.0", " 27685 ", "'27685"
   let s = String(raw ?? "").trim();
   if (!s) return "";
-  s = s.replace(/^'+|'+$/g, ""); // strip leading/trailing apostrophes
-  s = s.replace(/"/g, "");       // strip quotes
-  if (/^\d+(\.\d+)?$/.test(s)) s = String(parseInt(s, 10)); // drop decimals
+  s = s.replace(/^'+|'+$/g, "");
+  s = s.replace(/"/g, "");
+  if (/^\d+(\.\d+)?$/.test(s)) s = String(parseInt(s, 10));
   return s.trim();
 }
 
 function parseMoney(raw){
-  // Handles: "$1,234.56", "1234.56", "1,234", ""
-  const s = String(raw ?? "").trim();
+  // Handles: "$1,234.56", "1,234.56", "(1,234.56)", "1234.56", "—", ""
+  let s = String(raw ?? "").trim();
   if (!s) return 0;
-  const cleaned = s.replace(/[$,]/g, "").replace(/\s/g, "");
-  const v = parseFloat(cleaned);
-  return Number.isFinite(v) ? v : 0;
+
+  // Normalize weird spaces (non-breaking, narrow no-break, etc.)
+  s = s.replace(/[\u00A0\u202F\u2007]/g, " ").trim();
+
+  let negative = false;
+  if (s.startsWith("(") && s.endsWith(")")){
+    negative = true;
+    s = s.slice(1, -1);
+  }
+
+  // Strip currency symbols and separators
+  s = s.replace(/[$,]/g, "");
+  s = s.replace(/\s/g, "");
+
+  // If it's something like "—" or "N/A"
+  if (!/[0-9]/.test(s)) return 0;
+
+  const v = parseFloat(s);
+  if (!Number.isFinite(v)) return 0;
+  return negative ? -v : v;
 }
 
 function escapeHtml(s){
@@ -59,9 +80,6 @@ function escapeHtml(s){
     .replaceAll("'","&#039;");
 }
 
-/**
- * Robust CSV row splitter that respects quotes.
- */
 function splitCSVLine(line){
   const out = [];
   let cur = "";
@@ -71,7 +89,6 @@ function splitCSVLine(line){
     const ch = line[i];
 
     if (ch === '"'){
-      // Handle escaped quotes ("")
       if (inQuotes && line[i + 1] === '"'){
         cur += '"';
         i++;
@@ -89,67 +106,16 @@ function splitCSVLine(line){
 
     cur += ch;
   }
+
   out.push(cur);
   return out.map(x => x.trim());
-}
-
-function parseCSV(text){
-  const lines = text
-    .replace(/\uFEFF/g, "") // remove BOM
-    .split(/\r?\n/)
-    .filter(l => l.trim().length > 0);
-
-  if (lines.length < 2) return [];
-
-  const headersRaw = splitCSVLine(lines[0]);
-  const headers = headersRaw.map(normalizeHeader);
-
-  const findHeaderIndex = (candidates) => {
-    for (let i = 0; i < headers.length; i++){
-      if (candidates.includes(headers[i])) return i;
-    }
-    return -1;
-  };
-
-  // Accept common variants people export from Excel/RCM tables
-  const idxCpt = findHeaderIndex([
-    "cpt","cptcode","procedurecode","code"
-  ]);
-
-  const idxDesc = findHeaderIndex([
-    "description","cptdescription","procedurename","name"
-  ]);
-
-  const idxAllowed = findHeaderIndex([
-    "allowedamount","allowed","allowable","allowableamount","allowedamt","allowedvalue","allowedfee"
-  ]);
-
-  if (idxCpt === -1 || idxAllowed === -1){
-    throw new Error(
-      "CSV must include a CPT column and an Allowed Amount column. " +
-      "Accepted headers include: CPT / CPTCode, and AllowedAmount / Allowed / Allowable."
-    );
-  }
-
-  const out = [];
-  for (let i = 1; i < lines.length; i++){
-    const cols = splitCSVLine(lines[i]);
-    const cpt = normalizeCpt(cols[idxCpt]);
-    if (!cpt) continue;
-
-    const desc = idxDesc !== -1 ? String(cols[idxDesc] || "").trim() : "";
-    const allowed = parseMoney(cols[idxAllowed]);
-
-    out.push({ cpt, desc, allowed });
-  }
-  return out;
 }
 
 function ensureBanner(){
   let el = document.getElementById("banner");
   if (el) return el;
 
-  const card = document.querySelector(".card"); // first card (Fee Schedule)
+  const card = document.querySelector(".card"); // Fee Schedule card
   el = document.createElement("div");
   el.id = "banner";
   el.style.marginTop = "12px";
@@ -185,6 +151,119 @@ function hideBanner(){
   if (el) el.style.display = "none";
 }
 
+function pickBestAllowedIndex(headersNorm, rows){
+  // Find all columns whose header looks like "allowed"
+  const candidates = [];
+  for (let i = 0; i < headersNorm.length; i++){
+    const h = headersNorm[i];
+    if (
+      h.includes("allowed") ||
+      h.includes("allowable") ||
+      h.includes("allowedamt") ||
+      h.includes("allowedamount") ||
+      h.includes("allowedfee")
+    ){
+      candidates.push(i);
+    }
+  }
+
+  if (candidates.length === 0) return -1;
+  if (candidates.length === 1) return candidates[0];
+
+  // Score each candidate by how many numeric values it has (and total magnitude)
+  const sampleN = Math.min(rows.length, 40);
+  let bestIdx = candidates[0];
+  let bestScore = -1;
+
+  for (const idx of candidates){
+    let numericCount = 0;
+    let nonEmptyCount = 0;
+    let magnitude = 0;
+
+    for (let r = 0; r < sampleN; r++){
+      const val = rows[r][idx];
+      const s = String(val ?? "").trim();
+      if (s) nonEmptyCount++;
+
+      const m = parseMoney(val);
+      if (Number.isFinite(m) && m !== 0){
+        numericCount++;
+        magnitude += Math.abs(m);
+      }
+    }
+
+    // Weighted score: numeric count most important, then non-empty, then magnitude
+    const score = (numericCount * 1000000) + (nonEmptyCount * 1000) + magnitude;
+
+    if (score > bestScore){
+      bestScore = score;
+      bestIdx = idx;
+    }
+  }
+
+  return bestIdx;
+}
+
+function parseCSV(text){
+  const lines = text
+    .replace(/\uFEFF/g, "")
+    .split(/\r?\n/)
+    .filter(l => l.trim().length > 0);
+
+  if (lines.length < 2) return [];
+
+  const headersRaw = splitCSVLine(lines[0]);
+  const headersNorm = headersRaw.map(normalizeHeader);
+
+  const rows = [];
+  for (let i = 1; i < lines.length; i++){
+    rows.push(splitCSVLine(lines[i]));
+  }
+
+  const findHeaderIndex = (candidates) => {
+    for (let i = 0; i < headersNorm.length; i++){
+      if (candidates.includes(headersNorm[i])) return i;
+    }
+    return -1;
+  };
+
+  const idxCpt = findHeaderIndex(["cpt","cptcode","procedurecode","code"]);
+  const idxDesc = findHeaderIndex(["description","cptdescription","procedurename","name"]);
+
+  // Instead of a single allowed index, pick best allowed-like column
+  const idxAllowed = pickBestAllowedIndex(headersNorm, rows);
+
+  if (idxCpt === -1 || idxAllowed === -1){
+    throw new Error(
+      "CSV must include CPT and Allowed columns. " +
+      "Make sure there is a CPT column and an Allowed/AllowedAmount/Allowable column."
+    );
+  }
+
+  const out = [];
+  for (const cols of rows){
+    const cpt = normalizeCpt(cols[idxCpt]);
+    if (!cpt) continue;
+
+    const desc = idxDesc !== -1 ? String(cols[idxDesc] || "").trim() : "";
+    const allowed = parseMoney(cols[idxAllowed]);
+
+    out.push({ cpt, desc, allowed });
+  }
+
+  // If allowed values are still all zero, tell them exactly what happened
+  const nonZero = out.filter(x => x.allowed !== 0).length;
+  if (out.length > 0 && nonZero === 0){
+    showBanner(
+      "Fee schedule loaded, but Allowed amounts are still all $0.00. " +
+      "Your CSV likely stores allowed amounts in a non-standard format (or another column not labeled 'Allowed').",
+      "warn"
+    );
+  }
+
+  return out;
+}
+
 function loadFeeSchedule(items){
   state.feeMap.clear();
   for (const it of items){
@@ -192,7 +271,7 @@ function loadFeeSchedule(items){
   }
 
   if (state.feeMap.size === 0){
-    showBanner("Fee schedule loaded, but 0 CPTs were detected. Check your CSV columns/values.", "warn");
+    showBanner("Fee schedule loaded, but 0 CPTs were detected. Check your CSV values.", "warn");
   } else {
     hideBanner();
   }
@@ -294,8 +373,8 @@ function onProcInput(e){
 }
 
 function recalcAll(){
-  // Enrich from fee schedule
   let anyMissing = false;
+
   for (const r of state.rows){
     const cpt = normalizeCpt(r.cpt);
     r.cpt = cpt;
@@ -322,7 +401,6 @@ function recalcAll(){
     hideBanner();
   }
 
-  // Multi-proc rule based on non-blank CPTs
   let seen = 0;
   for (const r of state.rows){
     if (r.cpt){
@@ -335,7 +413,6 @@ function recalcAll(){
     r.lineTotal = r.qty * r.adjAllowed;
   }
 
-  // Totals logic
   const totalAllowed = state.rows.reduce((sum, r) => sum + (r.lineTotal || 0), 0);
 
   const copay = numVal($("copay"));
