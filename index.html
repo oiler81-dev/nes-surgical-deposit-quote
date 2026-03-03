@@ -4,19 +4,20 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Surgical Deposit Quote (Static)</title>
+  <title>Surgical Deposit Quote (NES)</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="topbar">
     <div class="wrap topbar__inner">
       <div class="brand">
-        <img class="brand__logo" src="assets/nes-logo.png" alt="NES logo" />
+        <img class="brand__logo" src="assets/nes-logo.png" alt="Northwest Extremity Specialists logo" />
         <div class="brand__text">
           <div class="brand__title">Surgical Deposit Quote</div>
-          <div class="brand__sub">Static GitHub Pages version (no storage)</div>
+          <div class="brand__sub">Northwest Extremity Specialists</div>
         </div>
       </div>
+
       <div class="topbar__actions">
         <button id="btnReset" class="btn btn--ghost" type="button">Reset</button>
         <button id="btnPrint" class="btn" type="button">Print Patient Quote</button>
@@ -39,7 +40,7 @@
           <label class="label">Upload Fee Schedule CSV</label>
           <input id="feeFile" class="input" type="file" accept=".csv" />
           <p class="hint">
-            CSV columns required: <b>CPT</b>, <b>Description</b>, <b>AllowedAmount</b>
+            Required columns: <b>CPT</b>, <b>Description</b>, <b>AllowedAmount</b>
           </p>
         </div>
 
@@ -47,7 +48,7 @@
           <label class="label">Loaded Fee Schedule</label>
           <div class="pillRow">
             <div class="pill"><span id="feeCount">0</span> CPTs loaded</div>
-            <div class="pill pill--muted">Tip: CPT must match exactly</div>
+            <div class="pill pill--muted">CPT must match exactly</div>
           </div>
         </div>
       </div>
@@ -100,13 +101,14 @@
         <div>
           <label class="label">Coinsurance % (patient)</label>
           <input id="coinsPct" class="input" type="number" min="0" max="1" step="0.01" value="0.20" />
-          <p class="hint">Enter 0.2 for 20%</p>
+          <p class="hint">Example: enter <b>0.20</b> for 20%</p>
         </div>
 
         <div>
           <label class="label">OOP Max Remaining</label>
           <input id="oopRem" class="input" type="number" min="0" step="0.01" value="999999" />
         </div>
+
         <div class="span-2">
           <div class="callout">
             <b>Multi-procedure rule:</b> 1st CPT = 100% allowed, every CPT after that = 50% allowed.
@@ -175,7 +177,7 @@
     <section class="card printOnly" id="printQuote">
       <div class="printHeader">
         <div class="printHeader__left">
-          <img class="printLogo" src="assets/nes-logo.png" alt="NES logo" />
+          <img class="printLogo" src="assets/nes-logo.png" alt="Northwest Extremity Specialists logo" />
           <div>
             <h2 class="printTitle">Surgical Deposit Estimate</h2>
             <div class="printDisclaimer">Estimate only. Final responsibility may change after insurance adjudication.</div>
@@ -245,7 +247,7 @@
 
   <footer class="footer wrap">
     <div class="muted">
-      Static version: quotes are not saved centrally. Print to PDF if you need a record.
+      Static version (no storage). Print to PDF if you need a record.
     </div>
   </footer>
 
