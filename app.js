@@ -1,14 +1,8 @@
-// app.js
-// Surgical Deposit Quote (Static)
-// - Fee schedule CSV import
-// - Auto populate Description + Allowed
-// - Multi-proc: 1st CPT = 100%, subsequent CPTs = 50%
-// - Deductible / coinsurance / OOP cap logic
-// - Printable patient quote with breakdown + NES logo
+// app.js (FIXED: robust CSV parsing + currency cleanup + CPT normalization + missing CPT warnings)
 
 const state = {
   feeMap: new Map(),        // CPT -> { desc, allowed }
-  rows: [],                 // procedure rows
+  rows: [],
   maxRows: 10
 };
 
@@ -25,12 +19,35 @@ function pct(n){
 }
 
 function numVal(el){
-  const v = parseFloat(el.value);
+  const v = parseFloat(String(el.value || "").replace(/,/g,""));
   return Number.isFinite(v) ? v : 0;
 }
 
-function cleanCpt(s){
-  return String(s || "").trim();
+function normalizeHeader(h){
+  return String(h || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[_-]/g, "");
+}
+
+function normalizeCpt(raw){
+  // Handles: "27685", "27685.0", " 27685 ", "'27685"
+  let s = String(raw ?? "").trim();
+  if (!s) return "";
+  s = s.replace(/^'+|'+$/g, ""); // strip leading/trailing apostrophes
+  s = s.replace(/"/g, "");       // strip quotes
+  if (/^\d+(\.\d+)?$/.test(s)) s = String(parseInt(s, 10)); // drop decimals
+  return s.trim();
+}
+
+function parseMoney(raw){
+  // Handles: "$1,234.56", "1234.56", "1,234", ""
+  const s = String(raw ?? "").trim();
+  if (!s) return 0;
+  const cleaned = s.replace(/[$,]/g, "").replace(/\s/g, "");
+  const v = parseFloat(cleaned);
+  return Number.isFinite(v) ? v : 0;
 }
 
 function escapeHtml(s){
@@ -42,29 +59,130 @@ function escapeHtml(s){
     .replaceAll("'","&#039;");
 }
 
+/**
+ * Robust CSV row splitter that respects quotes.
+ */
+function splitCSVLine(line){
+  const out = [];
+  let cur = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++){
+    const ch = line[i];
+
+    if (ch === '"'){
+      // Handle escaped quotes ("")
+      if (inQuotes && line[i + 1] === '"'){
+        cur += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (ch === "," && !inQuotes){
+      out.push(cur);
+      cur = "";
+      continue;
+    }
+
+    cur += ch;
+  }
+  out.push(cur);
+  return out.map(x => x.trim());
+}
+
 function parseCSV(text){
-  const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+  const lines = text
+    .replace(/\uFEFF/g, "") // remove BOM
+    .split(/\r?\n/)
+    .filter(l => l.trim().length > 0);
+
   if (lines.length < 2) return [];
 
-  const headers = lines[0].split(",").map(h => h.trim());
-  const idxCpt = headers.findIndex(h => h.toLowerCase() === "cpt");
-  const idxDesc = headers.findIndex(h => h.toLowerCase() === "description");
-  const idxAllowed = headers.findIndex(h => h.toLowerCase() === "allowedamount");
+  const headersRaw = splitCSVLine(lines[0]);
+  const headers = headersRaw.map(normalizeHeader);
 
-  if (idxCpt === -1 || idxDesc === -1 || idxAllowed === -1){
-    throw new Error("CSV must include headers CPT, Description, AllowedAmount");
+  const findHeaderIndex = (candidates) => {
+    for (let i = 0; i < headers.length; i++){
+      if (candidates.includes(headers[i])) return i;
+    }
+    return -1;
+  };
+
+  // Accept common variants people export from Excel/RCM tables
+  const idxCpt = findHeaderIndex([
+    "cpt","cptcode","procedurecode","code"
+  ]);
+
+  const idxDesc = findHeaderIndex([
+    "description","cptdescription","procedurename","name"
+  ]);
+
+  const idxAllowed = findHeaderIndex([
+    "allowedamount","allowed","allowable","allowableamount","allowedamt","allowedvalue","allowedfee"
+  ]);
+
+  if (idxCpt === -1 || idxAllowed === -1){
+    throw new Error(
+      "CSV must include a CPT column and an Allowed Amount column. " +
+      "Accepted headers include: CPT / CPTCode, and AllowedAmount / Allowed / Allowable."
+    );
   }
 
   const out = [];
-  for (let i=1; i<lines.length; i++){
-    const cols = lines[i].split(",").map(x => x.trim());
-    const cpt = cleanCpt(cols[idxCpt]);
-    const desc = cols[idxDesc] || "";
-    const allowed = parseFloat(cols[idxAllowed]);
+  for (let i = 1; i < lines.length; i++){
+    const cols = splitCSVLine(lines[i]);
+    const cpt = normalizeCpt(cols[idxCpt]);
     if (!cpt) continue;
-    out.push({ cpt, desc, allowed: Number.isFinite(allowed) ? allowed : 0 });
+
+    const desc = idxDesc !== -1 ? String(cols[idxDesc] || "").trim() : "";
+    const allowed = parseMoney(cols[idxAllowed]);
+
+    out.push({ cpt, desc, allowed });
   }
   return out;
+}
+
+function ensureBanner(){
+  let el = document.getElementById("banner");
+  if (el) return el;
+
+  const card = document.querySelector(".card"); // first card (Fee Schedule)
+  el = document.createElement("div");
+  el.id = "banner";
+  el.style.marginTop = "12px";
+  el.style.padding = "10px 12px";
+  el.style.borderRadius = "12px";
+  el.style.border = "1px solid rgba(16,56,96,.20)";
+  el.style.background = "rgba(16,56,96,.05)";
+  el.style.color = "#103860";
+  el.style.fontWeight = "700";
+  el.style.display = "none";
+  card.appendChild(el);
+  return el;
+}
+
+function showBanner(msg, type="info"){
+  const el = ensureBanner();
+  el.textContent = msg;
+  el.style.display = "block";
+
+  if (type === "warn"){
+    el.style.border = "1px solid rgba(180,83,9,.35)";
+    el.style.background = "rgba(180,83,9,.08)";
+    el.style.color = "#7c2d12";
+  } else {
+    el.style.border = "1px solid rgba(16,56,96,.20)";
+    el.style.background = "rgba(16,56,96,.05)";
+    el.style.color = "#103860";
+  }
+}
+
+function hideBanner(){
+  const el = document.getElementById("banner");
+  if (el) el.style.display = "none";
 }
 
 function loadFeeSchedule(items){
@@ -72,6 +190,13 @@ function loadFeeSchedule(items){
   for (const it of items){
     state.feeMap.set(it.cpt, { desc: it.desc, allowed: it.allowed });
   }
+
+  if (state.feeMap.size === 0){
+    showBanner("Fee schedule loaded, but 0 CPTs were detected. Check your CSV columns/values.", "warn");
+  } else {
+    hideBanner();
+  }
+
   renderFeePreview();
   renderCptList();
   recalcAll();
@@ -90,7 +215,7 @@ function renderFeePreview(){
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${escapeHtml(e.cpt)}</td>
-      <td>${escapeHtml(e.desc)}</td>
+      <td>${escapeHtml(e.desc || "")}</td>
       <td class="num">${money(e.allowed)}</td>
     `;
     tbody.appendChild(tr);
@@ -119,7 +244,8 @@ function initRows(){
       allowed: 0,
       adjPct: 0,
       adjAllowed: 0,
-      lineTotal: 0
+      lineTotal: 0,
+      notFound: false
     });
   }
 }
@@ -158,7 +284,7 @@ function onProcInput(e){
   if (!row) return;
 
   if (field === "cpt"){
-    row.cpt = cleanCpt(v);
+    row.cpt = normalizeCpt(v);
   } else if (field === "qty"){
     const q = parseInt(v, 10);
     row.qty = Number.isFinite(q) && q > 0 ? q : 1;
@@ -168,21 +294,38 @@ function onProcInput(e){
 }
 
 function recalcAll(){
+  // Enrich from fee schedule
+  let anyMissing = false;
   for (const r of state.rows){
-    const cpt = cleanCpt(r.cpt);
+    const cpt = normalizeCpt(r.cpt);
+    r.cpt = cpt;
+
     if (!cpt){
       r.desc = "";
       r.allowed = 0;
+      r.notFound = false;
       continue;
     }
+
     const hit = state.feeMap.get(cpt);
     r.desc = hit ? hit.desc : "";
     r.allowed = hit ? hit.allowed : 0;
+    r.notFound = !hit;
+    if (r.notFound) anyMissing = true;
   }
 
+  if (state.feeMap.size === 0){
+    showBanner("No fee schedule loaded yet. Upload a CSV so Allowed Amounts populate.", "warn");
+  } else if (anyMissing){
+    showBanner("Some CPTs were not found in the fee schedule. Those lines will show $0.00 allowed.", "warn");
+  } else {
+    hideBanner();
+  }
+
+  // Multi-proc rule based on non-blank CPTs
   let seen = 0;
   for (const r of state.rows){
-    if (cleanCpt(r.cpt)){
+    if (r.cpt){
       seen += 1;
       r.adjPct = (seen === 1) ? 1.0 : 0.5;
     } else {
@@ -192,6 +335,7 @@ function recalcAll(){
     r.lineTotal = r.qty * r.adjAllowed;
   }
 
+  // Totals logic
   const totalAllowed = state.rows.reduce((sum, r) => sum + (r.lineTotal || 0), 0);
 
   const copay = numVal($("copay"));
@@ -225,6 +369,7 @@ function recalcAll(){
 
 function renderProcOutputs(){
   const tbody = $("procTbody");
+
   for (let i=0; i<state.rows.length; i++){
     const r = state.rows[i];
 
@@ -234,7 +379,11 @@ function renderProcOutputs(){
     const adjAllowedCell = tbody.querySelector(`[data-row="${i}"][data-out="adjAllowed"]`);
     const lineTotalCell = tbody.querySelector(`[data-row="${i}"][data-out="lineTotal"]`);
 
-    if (descCell) descCell.textContent = r.desc || "";
+    if (descCell){
+      descCell.textContent = r.desc || (r.notFound ? "CPT not found in fee schedule" : "");
+      descCell.style.color = r.notFound ? "#b45309" : "";
+      descCell.style.fontWeight = r.notFound ? "800" : "";
+    }
     if (allowedCell) allowedCell.textContent = money(r.allowed || 0);
     if (adjPctCell) adjPctCell.textContent = r.adjPct ? pct(r.adjPct) : "—";
     if (adjAllowedCell) adjAllowedCell.textContent = money(r.adjAllowed || 0);
@@ -266,11 +415,11 @@ function renderPrintable(calc){
   const tbody = $("printProcTbody");
   tbody.innerHTML = "";
   for (const r of state.rows){
-    if (!cleanCpt(r.cpt)) continue;
+    if (!r.cpt) continue;
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${escapeHtml(r.cpt)}</td>
-      <td>${escapeHtml(r.desc || "")}</td>
+      <td>${escapeHtml(r.desc || (r.notFound ? "CPT not found in fee schedule" : ""))}</td>
       <td class="num">${r.qty}</td>
       <td class="num">${money(r.adjAllowed || 0)}</td>
       <td class="num">${money(r.lineTotal || 0)}</td>
