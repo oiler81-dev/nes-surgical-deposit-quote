@@ -1,4 +1,3 @@
-<!-- index.html -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -40,7 +39,7 @@
           <label class="label">Upload Fee Schedule CSV</label>
           <input id="feeFile" class="input" type="file" accept=".csv" />
           <p class="hint">
-            Required columns: <b>CPT</b>, <b>Description</b>, <b>AllowedAmount</b>
+            Required columns: <b>CPT</b>, <b>Description</b>, <b>AllowedAmount</b> (or Allowed/Allowable)
           </p>
         </div>
 
@@ -207,15 +206,17 @@
       </div>
 
       <h3 class="printSectionTitle">Procedure Summary</h3>
-      <div class="tableWrap">
-        <table class="table" id="printProcTable">
+
+      <!-- PRINT TABLE WRAPPER: not scrollable -->
+      <div class="printTableWrap">
+        <table class="printTable" id="printProcTable">
           <thead>
             <tr>
-              <th>CPT</th>
+              <th style="width: 14%;">CPT</th>
               <th>Description</th>
-              <th class="num">Qty</th>
-              <th class="num">Adj Allowed</th>
-              <th class="num">Line Total</th>
+              <th style="width: 8%;" class="num">Qty</th>
+              <th style="width: 16%;" class="num">Adj Allowed</th>
+              <th style="width: 16%;" class="num">Line Total</th>
             </tr>
           </thead>
           <tbody id="printProcTbody"></tbody>
@@ -246,9 +247,7 @@
   </main>
 
   <footer class="footer wrap">
-    <div class="muted">
-      Static version (no storage). Print to PDF if you need a record.
-    </div>
+    <div class="muted">Static version (no storage). Print to PDF if you need a record.</div>
   </footer>
 
   <script src="app.js"></script>
