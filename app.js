@@ -4,7 +4,7 @@
 // - Auto populate Description + Allowed
 // - Multi-proc: 1st CPT = 100%, subsequent CPTs = 50%
 // - Deductible / coinsurance / OOP cap logic
-// - Printable patient quote with breakdown + NES logo in header
+// - Printable patient quote with breakdown + NES logo
 
 const state = {
   feeMap: new Map(),        // CPT -> { desc, allowed }
@@ -168,7 +168,6 @@ function onProcInput(e){
 }
 
 function recalcAll(){
-  // Enrich from fee schedule
   for (const r of state.rows){
     const cpt = cleanCpt(r.cpt);
     if (!cpt){
@@ -181,7 +180,6 @@ function recalcAll(){
     r.allowed = hit ? hit.allowed : 0;
   }
 
-  // Apply multi-proc rule based on order of non-blank CPTs
   let seen = 0;
   for (const r of state.rows){
     if (cleanCpt(r.cpt)){
