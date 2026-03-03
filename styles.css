@@ -1,10 +1,10 @@
-/* styles.css (NES-inspired light theme) */
+/* styles.css (NES-inspired light theme + REAL print layout) */
 @import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&display=swap");
 
 :root{
-  --navy:#103860;          /* pulled from NES logo */
+  --navy:#103860;
   --navy-2:#0b2a48;
-  --green:#386830;         /* pulled from NES logo */
+  --green:#386830;
   --green-2:#2d5426;
 
   --bg:#f6f8fb;
@@ -38,9 +38,7 @@ html,body{
 .topbar__inner{display:flex;align-items:center;justify-content:space-between;gap:12px}
 
 .brand{display:flex;align-items:center;gap:12px;min-width:0}
-.brand__logo{
-  width:56px;height:56px;object-fit:contain;
-}
+.brand__logo{width:56px;height:56px;object-fit:contain}
 .brand__text{min-width:0}
 .brand__title{font-weight:800;letter-spacing:.2px}
 .brand__sub{color:var(--muted2);font-size:12px;margin-top:2px}
@@ -121,6 +119,7 @@ html,body{
 .pill--muted{color:var(--muted2);font-weight:600}
 
 .details summary{cursor:pointer;color:var(--navy);font-weight:800}
+
 .tableWrap{
   overflow:auto;
   margin-top:10px;
@@ -196,6 +195,7 @@ html,body{
 .footer{padding:18px 16px 40px}
 .muted{color:var(--muted2);font-size:12px}
 
+/* --- On-screen print section styles --- */
 .printOnly{margin-top:16px}
 .printHeader{
   display:flex;
@@ -237,10 +237,7 @@ html,body{
   font-weight:700;
 }
 .breakdown__row:last-child{border-bottom:none}
-.breakdown__row--bold{
-  font-weight:900;
-  color:var(--green-2);
-}
+.breakdown__row--bold{font-weight:900;color:var(--green-2)}
 
 .printNotes{margin-top:14px}
 .printNotes__box{
@@ -250,18 +247,149 @@ html,body{
   background:#fff;
 }
 
+/* =========================
+   PRINT: MAKE IT A REAL QUOTE
+   ========================= */
+@page{
+  size: Letter;
+  margin: 0.65in;
+}
+
+/* kill the webapp UI when printing and format quote like a document */
 @media print{
-  body{background:#fff;color:#000}
-  .topbar,.footer, .card:not(#printQuote){display:none !important}
+  html, body{
+    background:#fff !important;
+    color:#000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Only print the quote section */
+  .topbar, .footer, .card:not(#printQuote){
+    display:none !important;
+  }
+
+  /* Remove the "card" look and force full width */
   #printQuote{
     display:block !important;
-    border:none;
-    box-shadow:none;
-    background:#fff;
-    color:#000;
-    padding:0;
+    background:#fff !important;
+    border:none !important;
+    box-shadow:none !important;
+    border-radius:0 !important;
+    padding:0 !important;
+    margin:0 !important;
+    width:100% !important;
   }
-  .tableWrap{border:1px solid #ddd}
-  .table th{background:#f5f5f5;color:#333}
-  .breakdown__row--bold{color:#000}
+
+  /* Make the layout feel like a document */
+  .printHeader{
+    border-bottom:2px solid #000;
+    padding-bottom:10px;
+    margin-bottom:12px;
+  }
+  .printLogo{width:165px !important}
+  .printTitle{
+    font-size:20px !important;
+    color:#000 !important;
+    margin-top:2px !important;
+  }
+  .printDisclaimer{
+    color:#000 !important;
+    opacity:.8 !important;
+  }
+  .printMeta{
+    color:#000 !important;
+    opacity:.85 !important;
+    font-size:11px !important;
+  }
+
+  .printGrid{
+    margin-top:10px !important;
+    padding:10px 0 6px !important;
+    border-bottom:1px solid #000;
+  }
+  .printField{
+    font-size:12px !important;
+    color:#000 !important;
+    font-weight:700 !important;
+  }
+
+  /* Tighten the “big numbers” so they look like boxes on a form */
+  .printBig{
+    border:1px solid #000 !important;
+    border-radius:0 !important;
+    box-shadow:none !important;
+    min-width:240px !important;
+  }
+  .printBig__label{color:#000 !important;opacity:.85 !important}
+  .printBig__value{color:#000 !important}
+
+  .printSectionTitle{
+    color:#000 !important;
+    font-size:13px !important;
+    margin-top:14px !important;
+  }
+
+  /* CRITICAL: remove scrolling + min-width so the table prints like a table */
+  .tableWrap{
+    overflow:visible !important;
+    border:1px solid #000 !important;
+    border-radius:0 !important;
+  }
+  .table{
+    min-width:0 !important;
+    width:100% !important;
+    border-collapse:collapse !important;
+  }
+  .table th{
+    background:#f2f2f2 !important;
+    color:#000 !important;
+    border-bottom:1px solid #000 !important;
+    font-size:11px !important;
+  }
+  .table td{
+    color:#000 !important;
+    font-size:11px !important;
+    border-bottom:1px solid #ddd !important;
+  }
+
+  /* Breakdown becomes a clean form block */
+  .breakdown{
+    border:1px solid #000 !important;
+    border-radius:0 !important;
+  }
+  .breakdown__row{
+    background:#fff !important;
+    color:#000 !important;
+    font-size:11px !important;
+    border-bottom:1px solid #ddd !important;
+  }
+  .breakdown__row--bold{
+    color:#000 !important;
+    font-weight:900 !important;
+  }
+
+  .printNotes__box{
+    border:1px solid #000 !important;
+    border-radius:0 !important;
+    height:90px !important;
+  }
+
+  /* Avoid ugly page breaks inside key blocks */
+  .tableWrap, .breakdown, .printHeader, .printGrid{
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Footer with url + page numbers (works in Chrome with default print headers/footers off) */
+  #printQuote::after{
+    content: "Northwest Extremity Specialists  •  Surgical Deposit Quote";
+    display:block;
+    margin-top:16px;
+    padding-top:8px;
+    border-top:1px solid #000;
+    font-size:10px;
+    color:#000;
+    opacity:.85;
+  }
 }
