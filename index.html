@@ -1,3 +1,4 @@
+<!-- index.html -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -10,7 +11,7 @@
   <header class="topbar">
     <div class="wrap topbar__inner">
       <div class="brand">
-        <div class="brand__mark">NES</div>
+        <img class="brand__logo" src="assets/nes-logo.png" alt="NES logo" />
         <div class="brand__text">
           <div class="brand__title">Surgical Deposit Quote</div>
           <div class="brand__sub">Static GitHub Pages version (no storage)</div>
@@ -120,13 +121,13 @@
           <thead>
             <tr>
               <th style="width: 48px;">#</th>
-              <th style="width: 120px;">CPT</th>
+              <th style="width: 140px;">CPT</th>
               <th>Description</th>
-              <th class="num" style="width: 70px;">Qty</th>
-              <th class="num" style="width: 110px;">Allowed</th>
-              <th class="num" style="width: 110px;">Adj %</th>
-              <th class="num" style="width: 130px;">Adj Allowed</th>
-              <th class="num" style="width: 140px;">Line Total</th>
+              <th class="num" style="width: 80px;">Qty</th>
+              <th class="num" style="width: 120px;">Allowed</th>
+              <th class="num" style="width: 90px;">Adj %</th>
+              <th class="num" style="width: 140px;">Adj Allowed</th>
+              <th class="num" style="width: 150px;">Line Total</th>
             </tr>
           </thead>
           <tbody id="procTbody"></tbody>
@@ -173,9 +174,12 @@
     <!-- Printable Patient Quote -->
     <section class="card printOnly" id="printQuote">
       <div class="printHeader">
-        <div>
-          <h2 class="printTitle">Surgical Deposit Estimate</h2>
-          <div class="printDisclaimer">Estimate only. Final responsibility may change after insurance adjudication.</div>
+        <div class="printHeader__left">
+          <img class="printLogo" src="assets/nes-logo.png" alt="NES logo" />
+          <div>
+            <h2 class="printTitle">Surgical Deposit Estimate</h2>
+            <div class="printDisclaimer">Estimate only. Final responsibility may change after insurance adjudication.</div>
+          </div>
         </div>
         <div class="printMeta">
           <div><b>Date:</b> <span id="printDate"></span></div>
