@@ -1,11 +1,9 @@
-/* styles.css (NES-inspired light theme + REAL print layout) */
 @import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&display=swap");
 
 :root{
   --navy:#103860;
   --navy-2:#0b2a48;
   --green:#386830;
-  --green-2:#2d5426;
 
   --bg:#f6f8fb;
   --card:#ffffff;
@@ -15,7 +13,6 @@
 
   --line:#e5eaf1;
   --shadow:0 10px 30px rgba(16,56,96,.10);
-
   --radius:16px;
 }
 
@@ -26,7 +23,6 @@ html,body{
   background:var(--bg);
   color:var(--text);
 }
-
 .wrap{max-width:1200px;margin:0 auto;padding:16px}
 
 .topbar{
@@ -36,13 +32,10 @@ html,body{
   border-bottom:1px solid var(--line);
 }
 .topbar__inner{display:flex;align-items:center;justify-content:space-between;gap:12px}
-
-.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand{display:flex;align-items:center;gap:12px}
 .brand__logo{width:56px;height:56px;object-fit:contain}
-.brand__text{min-width:0}
-.brand__title{font-weight:800;letter-spacing:.2px}
+.brand__title{font-weight:800}
 .brand__sub{color:var(--muted2);font-size:12px;margin-top:2px}
-
 .topbar__actions{display:flex;gap:10px;align-items:center}
 
 .layout{display:flex;flex-direction:column;gap:16px;margin-top:16px}
@@ -56,7 +49,6 @@ html,body{
 }
 .card__header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
 .card__header h2{margin:0;font-size:16px;color:var(--navy);font-weight:800}
-.card__headerRight{display:flex;gap:10px;align-items:center}
 
 .grid{display:grid;gap:12px}
 .grid--2{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -77,10 +69,6 @@ html,body{
   color:var(--text);
   outline:none;
 }
-.input:focus{
-  border-color:rgba(16,56,96,.55);
-  box-shadow:0 0 0 4px rgba(16,56,96,.10);
-}
 .hint{margin:6px 0 0;color:var(--muted2);font-size:12px}
 
 .btn{
@@ -91,17 +79,8 @@ html,body{
   padding:10px 12px;
   font-weight:800;
   cursor:pointer;
-  box-shadow:0 10px 20px rgba(16,56,96,.18);
 }
-.btn:hover{filter:brightness(1.02)}
-.btn:active{transform:translateY(1px)}
-.btn--ghost{
-  background:transparent;
-  border:1px solid var(--line);
-  color:var(--navy);
-  box-shadow:none;
-}
-.btn--ghost:hover{background:rgba(16,56,96,.04)}
+.btn--ghost{background:transparent;border:1px solid var(--line);color:var(--navy)}
 
 .link{color:var(--navy);text-decoration:none;font-size:13px;font-weight:700}
 .link:hover{text-decoration:underline}
@@ -118,8 +97,6 @@ html,body{
 }
 .pill--muted{color:var(--muted2);font-weight:600}
 
-.details summary{cursor:pointer;color:var(--navy);font-weight:800}
-
 .tableWrap{
   overflow:auto;
   margin-top:10px;
@@ -133,143 +110,97 @@ html,body{
   min-width:900px;
   background:#fff;
 }
-.table th,.table td{
-  padding:10px 10px;
-  border-bottom:1px solid var(--line);
-  vertical-align:top;
-}
-.table th{
-  font-size:12px;
-  color:var(--muted);
-  text-align:left;
-  background:#f3f6fb;
-  font-weight:800;
-}
-.table td{font-size:13px;color:var(--text)}
+.table th,.table td{padding:10px;border-bottom:1px solid var(--line)}
+.table th{background:#f3f6fb;color:var(--muted);font-size:12px;font-weight:800;text-align:left}
+.table td{font-size:13px}
 .table .num{text-align:right;white-space:nowrap}
-.table input{
-  width:100%;
-  padding:9px 10px;
-  border-radius:10px;
-  border:1px solid var(--line);
-  background:#fff;
-  color:var(--text);
-  font-weight:600;
-}
-.table input:focus{
-  border-color:rgba(56,104,48,.55);
-  box-shadow:0 0 0 4px rgba(56,104,48,.10);
-}
 
 .sep{border:none;border-top:1px solid var(--line);margin:14px 0}
 
 .callout{
   border:1px solid rgba(56,104,48,.25);
-  background:linear-gradient(180deg, rgba(56,104,48,.10), rgba(56,104,48,.06));
-  padding:12px 12px;
+  background:rgba(56,104,48,.08);
+  padding:12px;
   border-radius:12px;
   color:var(--navy);
   font-weight:600;
 }
 
 .totals{margin-top:14px}
-.totals__grid{
-  display:grid;
-  gap:12px;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-}
+.totals__grid{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr))}
 @media (max-width:900px){.totals__grid{grid-template-columns:1fr}}
-.totals__item{
-  border:1px solid var(--line);
-  border-radius:14px;
-  padding:12px;
-  background:#fff;
-}
-.totals__item--highlight{
-  border-color:rgba(56,104,48,.40);
-  background:linear-gradient(180deg, rgba(56,104,48,.10), rgba(56,104,48,.05));
-}
-.totals__label{color:var(--muted);font-size:12px;margin-bottom:6px;font-weight:700}
+.totals__item{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}
+.totals__item--highlight{border-color:rgba(56,104,48,.35);background:rgba(56,104,48,.08)}
+.totals__label{color:var(--muted);font-size:12px;font-weight:700}
 .totals__value{font-weight:900;font-size:18px;color:var(--navy)}
 
 .footer{padding:18px 16px 40px}
 .muted{color:var(--muted2);font-size:12px}
 
-/* --- On-screen print section styles --- */
-.printOnly{margin-top:16px}
-.printHeader{
-  display:flex;
-  justify-content:space-between;
-  gap:12px;
-  align-items:flex-start;
-  flex-wrap:wrap;
-}
-.printHeader__left{display:flex;align-items:flex-start;gap:12px}
-.printLogo{width:140px;height:auto;object-fit:contain}
+/* Print section (on screen) */
+.printHeader{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.printHeader__left{display:flex;gap:12px}
+.printLogo{width:150px;height:auto;object-fit:contain}
 .printTitle{margin:0;color:var(--navy);font-weight:900}
 .printDisclaimer{color:var(--muted2);font-size:12px;margin-top:4px}
 .printMeta{color:var(--muted2);font-size:12px;text-align:right}
 
 .printGrid{display:flex;justify-content:space-between;gap:12px;margin-top:10px;flex-wrap:wrap}
-.printField{font-size:13px;margin:6px 0;color:var(--text);font-weight:600}
+.printField{font-size:13px;margin:6px 0;font-weight:600}
 .printNumbers{display:flex;gap:12px;flex-wrap:wrap}
-
-.printBig{
-  border:1px solid var(--line);
-  border-radius:12px;
-  padding:10px 12px;
-  background:#fff;
-  min-width:220px;
-}
+.printBig{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff;min-width:230px}
 .printBig__label{color:var(--muted);font-size:12px;font-weight:800}
 .printBig__value{font-weight:900;font-size:22px;margin-top:4px;color:var(--navy)}
 
 .printSectionTitle{margin:16px 0 8px;font-size:14px;color:var(--navy);font-weight:900}
 
 .breakdown{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
-.breakdown__row{
-  display:flex;
-  justify-content:space-between;
-  gap:10px;
-  padding:10px 12px;
-  border-bottom:1px solid var(--line);
-  background:#fff;
-  font-weight:700;
-}
+.breakdown__row{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);font-weight:700}
 .breakdown__row:last-child{border-bottom:none}
-.breakdown__row--bold{font-weight:900;color:var(--green-2)}
+.breakdown__row--bold{font-weight:900}
 
 .printNotes{margin-top:14px}
-.printNotes__box{
-  margin-top:8px;height:80px;
+.printNotes__box{margin-top:8px;height:90px;border:1px solid var(--line);border-radius:12px;background:#fff}
+
+/* NEW: print table wrapper that never scrolls */
+.printTableWrap{
   border:1px solid var(--line);
   border-radius:12px;
+  overflow:hidden;
   background:#fff;
 }
+.printTable{
+  width:100%;
+  border-collapse:collapse;
+  table-layout:fixed;
+}
+.printTable th, .printTable td{
+  padding:10px;
+  border-bottom:1px solid var(--line);
+  vertical-align:top;
+  font-size:12px;
+}
+.printTable th{
+  background:#f3f6fb;
+  color:var(--muted);
+  font-weight:900;
+  text-align:left;
+}
+.printTable td{color:var(--text)}
+.printTable .num{text-align:right;white-space:nowrap}
+.printTable td:nth-child(2){
+  word-wrap:break-word;
+  overflow-wrap:anywhere;
+}
 
-/* =========================
-   PRINT: MAKE IT A REAL QUOTE
-   ========================= */
+/* PRINT: make it a document */
 @page{
   size: Letter;
   margin: 0.65in;
 }
-
-/* kill the webapp UI when printing and format quote like a document */
 @media print{
-  html, body{
-    background:#fff !important;
-    color:#000 !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  /* Only print the quote section */
-  .topbar, .footer, .card:not(#printQuote){
-    display:none !important;
-  }
-
-  /* Remove the "card" look and force full width */
+  html,body{background:#fff !important;color:#000 !important}
+  .topbar,.footer,.card:not(#printQuote){display:none !important}
   #printQuote{
     display:block !important;
     background:#fff !important;
@@ -278,118 +209,30 @@ html,body{
     border-radius:0 !important;
     padding:0 !important;
     margin:0 !important;
-    width:100% !important;
   }
 
-  /* Make the layout feel like a document */
-  .printHeader{
-    border-bottom:2px solid #000;
-    padding-bottom:10px;
-    margin-bottom:12px;
-  }
-  .printLogo{width:165px !important}
-  .printTitle{
-    font-size:20px !important;
-    color:#000 !important;
-    margin-top:2px !important;
-  }
-  .printDisclaimer{
-    color:#000 !important;
-    opacity:.8 !important;
-  }
-  .printMeta{
-    color:#000 !important;
-    opacity:.85 !important;
-    font-size:11px !important;
-  }
+  /* remove any scroll artifacts */
+  .tableWrap{display:none !important;}          /* kills the web-style wrap in print */
+  .printTableWrap{overflow:visible !important;border:1px solid #000 !important;border-radius:0 !important}
 
-  .printGrid{
-    margin-top:10px !important;
-    padding:10px 0 6px !important;
-    border-bottom:1px solid #000;
-  }
-  .printField{
-    font-size:12px !important;
-    color:#000 !important;
-    font-weight:700 !important;
-  }
+  .printHeader{border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:12px}
+  .printTitle{color:#000 !important;font-size:20px !important}
+  .printDisclaimer,.printMeta{color:#000 !important;opacity:.85 !important}
 
-  /* Tighten the “big numbers” so they look like boxes on a form */
-  .printBig{
-    border:1px solid #000 !important;
-    border-radius:0 !important;
-    box-shadow:none !important;
-    min-width:240px !important;
-  }
-  .printBig__label{color:#000 !important;opacity:.85 !important}
-  .printBig__value{color:#000 !important}
+  .printBig{border:1px solid #000 !important;border-radius:0 !important}
+  .printBig__label,.printBig__value{color:#000 !important}
 
-  .printSectionTitle{
-    color:#000 !important;
-    font-size:13px !important;
-    margin-top:14px !important;
-  }
+  .printSectionTitle{color:#000 !important}
 
-  /* CRITICAL: remove scrolling + min-width so the table prints like a table */
-  .tableWrap{
-    overflow:visible !important;
-    border:1px solid #000 !important;
-    border-radius:0 !important;
-  }
-  .table{
-    min-width:0 !important;
-    width:100% !important;
-    border-collapse:collapse !important;
-  }
-  .table th{
-    background:#f2f2f2 !important;
-    color:#000 !important;
-    border-bottom:1px solid #000 !important;
-    font-size:11px !important;
-  }
-  .table td{
-    color:#000 !important;
-    font-size:11px !important;
-    border-bottom:1px solid #ddd !important;
-  }
+  .printTable th{background:#f2f2f2 !important;color:#000 !important;border-bottom:1px solid #000 !important}
+  .printTable td{color:#000 !important}
 
-  /* Breakdown becomes a clean form block */
-  .breakdown{
-    border:1px solid #000 !important;
-    border-radius:0 !important;
-  }
-  .breakdown__row{
-    background:#fff !important;
-    color:#000 !important;
-    font-size:11px !important;
-    border-bottom:1px solid #ddd !important;
-  }
-  .breakdown__row--bold{
-    color:#000 !important;
-    font-weight:900 !important;
-  }
+  .breakdown{border:1px solid #000 !important;border-radius:0 !important}
+  .breakdown__row{border-bottom:1px solid #ddd !important;color:#000 !important}
+  .printNotes__box{border:1px solid #000 !important;border-radius:0 !important}
 
-  .printNotes__box{
-    border:1px solid #000 !important;
-    border-radius:0 !important;
-    height:90px !important;
-  }
-
-  /* Avoid ugly page breaks inside key blocks */
-  .tableWrap, .breakdown, .printHeader, .printGrid{
+  .printHeader,.printGrid,.printTableWrap,.breakdown{
     break-inside: avoid;
     page-break-inside: avoid;
-  }
-
-  /* Footer with url + page numbers (works in Chrome with default print headers/footers off) */
-  #printQuote::after{
-    content: "Northwest Extremity Specialists  •  Surgical Deposit Quote";
-    display:block;
-    margin-top:16px;
-    padding-top:8px;
-    border-top:1px solid #000;
-    font-size:10px;
-    color:#000;
-    opacity:.85;
   }
 }
