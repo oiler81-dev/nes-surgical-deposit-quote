@@ -1,1 +1,59 @@
-
+﻿CPT,Description,AllowedAmount
+10060,Drainage of skin abscess,150
+10140,Drainage of hematoma,220
+11042,Debride skin or tissue,160
+11043,Debride tissue muscle fascia 20 SQ ,300
+20680,Remove support implant,845
+27630,Removal tendon lesion,750
+27635,Remove lower leg bone lesion,770
+27654,Repair of achilles tendon,935
+27658,Repair of leg tendon each,495
+27659,Repair of leg tendon each,750
+27685,Revision of lower leg tendon,890
+27687,Revision of calf tendon,600
+27690,Revise lower leg tendon,835
+27691,Revise lower leg tendon,1140
+27695,Repair of ankle ligament,630
+27698,Repair of ankle ligaments,845
+28002,Treatment of foot infection,600
+28005,Treatment of foot bone lesion,770
+28008,Incision of foot  fascia,580
+28010,Incision of toe tendon,300
+28090,Removal of foot lesion,635
+28092,Removal of toe lesions,570
+28100,Removal of ankle/heel lesion,810
+28104,Removal of foot lesion,705
+28108,Removal of toe lesions,600
+28110,Partial removal of metatarsal,625
+28118,Removal of heel bone,790
+28119,Removal of heel spur,710
+28120,Partial removal of ankle/heel,910
+28122,Partial rmeoval of foot bone,805
+28153,Partial removal of toe,560
+28160,Partial removal of toe,565
+28285,Repair hammertoe,720
+28288,Partial removal of foot bone,815
+28289,Repair hallux rigidus,985
+28291,Correction Hallus Rigidus with implant,1250
+28292,Correction of bunion,1061
+28296,Correction of bunion,1210
+28297,Correction of bunion,1385
+28298,Correction of bunion,1125
+28299,Correction of bunion double osteotomy,1335
+28300,Incision of heel bone,1015
+28308,Incision of metatarsal,755
+28310,Revision of big toe,730
+28313,repair deformity of toe,715
+28315,Removal of sesamoid bone,645
+28485,Treat metatarsal fracture,705
+28615,Repair foot dislocation,1040
+28725,Fusion of foot bones,1020
+28730,Fusion of foot bones,970
+28740,Fusion of foot bones,1100
+28750,Fusion of big toe joint,1090
+28755,Fusion of big toe joint,685
+28760,Fusion of big toe joint,1050
+28805,Amputation thru metatarsal,975
+28810,Amutation of toe and metatarsal,575
+28825,Partial amputaiton of toe,730
+29898,Ankle arthroscopy,745
