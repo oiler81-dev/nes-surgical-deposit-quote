@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Surgical Deposit Quote (Static)</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar__inner">
+      <div class="brand">
+        <div class="brand__mark">NES</div>
+        <div class="brand__text">
+          <div class="brand__title">Surgical Deposit Quote</div>
+          <div class="brand__sub">Static GitHub Pages version (no storage)</div>
+        </div>
+      </div>
+      <div class="topbar__actions">
+        <button id="btnReset" class="btn btn--ghost" type="button">Reset</button>
+        <button id="btnPrint" class="btn" type="button">Print Patient Quote</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap layout">
+    <!-- Fee Schedule -->
+    <section class="card">
+      <div class="card__header">
+        <h2>1) Fee Schedule</h2>
+        <div class="card__headerRight">
+          <a class="link" href="feeSchedule.sample.csv" download>Download sample CSV</a>
+        </div>
+      </div>
+
+      <div class="grid grid--2">
+        <div>
+          <label class="label">Upload Fee Schedule CSV</label>
+          <input id="feeFile" class="input" type="file" accept=".csv" />
+          <p class="hint">
+            CSV columns required: <b>CPT</b>, <b>Description</b>, <b>AllowedAmount</b>
+          </p>
+        </div>
+
+        <div>
+          <label class="label">Loaded Fee Schedule</label>
+          <div class="pillRow">
+            <div class="pill"><span id="feeCount">0</span> CPTs loaded</div>
+            <div class="pill pill--muted">Tip: CPT must match exactly</div>
+          </div>
+        </div>
+      </div>
+
+      <details class="details">
+        <summary>Preview loaded fee schedule</summary>
+        <div class="tableWrap">
+          <table class="table" id="feePreview">
+            <thead>
+              <tr>
+                <th>CPT</th>
+                <th>Description</th>
+                <th class="num">Allowed</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+
+    <!-- Quote Builder -->
+    <section class="card">
+      <div class="card__header">
+        <h2>2) Quote Builder</h2>
+      </div>
+
+      <div class="grid grid--3">
+        <div>
+          <label class="label">Patient Name</label>
+          <input id="patientName" class="input" type="text" placeholder="John Smith" />
+        </div>
+        <div>
+          <label class="label">Insurance Plan</label>
+          <input id="insurancePlan" class="input" type="text" placeholder="PPO / HMO / Medicare" />
+        </div>
+        <div>
+          <label class="label">Prepared By</label>
+          <input id="preparedBy" class="input" type="text" placeholder="Staff name" />
+        </div>
+
+        <div>
+          <label class="label">Copay</label>
+          <input id="copay" class="input" type="number" min="0" step="0.01" value="0" />
+        </div>
+        <div>
+          <label class="label">Deductible Remaining</label>
+          <input id="dedRem" class="input" type="number" min="0" step="0.01" value="0" />
+        </div>
+        <div>
+          <label class="label">Coinsurance % (patient)</label>
+          <input id="coinsPct" class="input" type="number" min="0" max="1" step="0.01" value="0.20" />
+          <p class="hint">Enter 0.2 for 20%</p>
+        </div>
+
+        <div>
+          <label class="label">OOP Max Remaining</label>
+          <input id="oopRem" class="input" type="number" min="0" step="0.01" value="999999" />
+        </div>
+        <div class="span-2">
+          <div class="callout">
+            <b>Multi-procedure rule:</b> 1st CPT = 100% allowed, every CPT after that = 50% allowed.
+          </div>
+        </div>
+      </div>
+
+      <hr class="sep" />
+
+      <div class="tableWrap">
+        <table class="table" id="procTable">
+          <thead>
+            <tr>
+              <th style="width: 48px;">#</th>
+              <th style="width: 120px;">CPT</th>
+              <th>Description</th>
+              <th class="num" style="width: 70px;">Qty</th>
+              <th class="num" style="width: 110px;">Allowed</th>
+              <th class="num" style="width: 110px;">Adj %</th>
+              <th class="num" style="width: 130px;">Adj Allowed</th>
+              <th class="num" style="width: 140px;">Line Total</th>
+            </tr>
+          </thead>
+          <tbody id="procTbody"></tbody>
+        </table>
+      </div>
+
+      <datalist id="cptList"></datalist>
+
+      <div class="totals">
+        <div class="totals__grid">
+          <div class="totals__item">
+            <div class="totals__label">Total Allowed (after multi-proc adjustment)</div>
+            <div class="totals__value" id="totalAllowed">$0.00</div>
+          </div>
+
+          <div class="totals__item">
+            <div class="totals__label">Deductible Applied</div>
+            <div class="totals__value" id="dedApplied">$0.00</div>
+          </div>
+
+          <div class="totals__item">
+            <div class="totals__label">Coinsurance Amount</div>
+            <div class="totals__value" id="coinsAmt">$0.00</div>
+          </div>
+
+          <div class="totals__item">
+            <div class="totals__label">Copay</div>
+            <div class="totals__value" id="copayOut">$0.00</div>
+          </div>
+
+          <div class="totals__item totals__item--highlight">
+            <div class="totals__label">Estimated Patient Owes (capped by OOP remaining)</div>
+            <div class="totals__value" id="estOwes">$0.00</div>
+          </div>
+
+          <div class="totals__item">
+            <div class="totals__label">Recommended Deposit</div>
+            <div class="totals__value" id="recDeposit">$0.00</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Printable Patient Quote -->
+    <section class="card printOnly" id="printQuote">
+      <div class="printHeader">
+        <div>
+          <h2 class="printTitle">Surgical Deposit Estimate</h2>
+          <div class="printDisclaimer">Estimate only. Final responsibility may change after insurance adjudication.</div>
+        </div>
+        <div class="printMeta">
+          <div><b>Date:</b> <span id="printDate"></span></div>
+          <div><b>Prepared By:</b> <span id="printPreparedBy"></span></div>
+        </div>
+      </div>
+
+      <div class="printGrid">
+        <div>
+          <div class="printField"><b>Patient:</b> <span id="printPatient"></span></div>
+          <div class="printField"><b>Insurance:</b> <span id="printInsurance"></span></div>
+        </div>
+        <div class="printNumbers">
+          <div class="printBig">
+            <div class="printBig__label">Estimated Amount Due</div>
+            <div class="printBig__value" id="printEstOwes">$0.00</div>
+          </div>
+          <div class="printBig">
+            <div class="printBig__label">Recommended Deposit</div>
+            <div class="printBig__value" id="printRecDeposit">$0.00</div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="printSectionTitle">Procedure Summary</h3>
+      <div class="tableWrap">
+        <table class="table" id="printProcTable">
+          <thead>
+            <tr>
+              <th>CPT</th>
+              <th>Description</th>
+              <th class="num">Qty</th>
+              <th class="num">Adj Allowed</th>
+              <th class="num">Line Total</th>
+            </tr>
+          </thead>
+          <tbody id="printProcTbody"></tbody>
+        </table>
+      </div>
+
+      <h3 class="printSectionTitle">How this estimate was calculated</h3>
+      <div class="breakdown">
+        <div class="breakdown__row"><span>Total Allowed (adjusted)</span><span id="printTotalAllowed">$0.00</span></div>
+        <div class="breakdown__row"><span>Deductible Applied</span><span id="printDedApplied">$0.00</span></div>
+        <div class="breakdown__row"><span>Coinsurance Amount</span><span id="printCoinsAmt">$0.00</span></div>
+        <div class="breakdown__row"><span>Copay</span><span id="printCopay">$0.00</span></div>
+        <div class="breakdown__row breakdown__row--bold"><span>Estimated Amount Due (OOP capped)</span><span id="printEstOwes2">$0.00</span></div>
+      </div>
+
+      <h3 class="printSectionTitle">Inputs used (insurance verification)</h3>
+      <div class="breakdown">
+        <div class="breakdown__row"><span>Deductible Remaining</span><span id="printDedRem">$0.00</span></div>
+        <div class="breakdown__row"><span>Coinsurance % (patient)</span><span id="printCoinsPct">0%</span></div>
+        <div class="breakdown__row"><span>OOP Max Remaining</span><span id="printOopRem">$0.00</span></div>
+      </div>
+
+      <div class="printNotes">
+        <b>Notes:</b>
+        <div class="printNotes__box"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer wrap">
+    <div class="muted">
+      Static version: quotes are not saved centrally. Print to PDF if you need a record.
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
