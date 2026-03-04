@@ -137,12 +137,12 @@ html,body{
 .footer{padding:18px 16px 40px}
 .muted{color:var(--muted2);font-size:12px}
 
-/* Print section (on screen) */
+/* Print section */
 .printHeader{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
-.printHeader__left{display:flex;gap:12px}
+.printHeader__left{display:flex;gap:12px;align-items:flex-start}
 .printLogo{width:150px;height:auto;object-fit:contain}
 .printTitle{margin:0;color:var(--navy);font-weight:900}
-.printDisclaimer{color:var(--muted2);font-size:12px;margin-top:4px}
+.printDisclaimer{color:var(--muted2);font-size:12px;margin-top:4px;max-width:640px;line-height:1.35}
 .printMeta{color:var(--muted2);font-size:12px;text-align:right}
 
 .printGrid{display:flex;justify-content:space-between;gap:12px;margin-top:10px;flex-wrap:wrap}
@@ -152,17 +152,14 @@ html,body{
 .printBig__label{color:var(--muted);font-size:12px;font-weight:800}
 .printBig__value{font-weight:900;font-size:22px;margin-top:4px;color:var(--navy)}
 
-.printSectionTitle{margin:16px 0 8px;font-size:14px;color:var(--navy);font-weight:900}
+.printSectionTitle{margin:14px 0 8px;font-size:14px;color:var(--navy);font-weight:900}
 
 .breakdown{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
 .breakdown__row{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);font-weight:700}
 .breakdown__row:last-child{border-bottom:none}
 .breakdown__row--bold{font-weight:900}
 
-.printNotes{margin-top:14px}
-.printNotes__box{margin-top:8px;height:90px;border:1px solid var(--line);border-radius:12px;background:#fff}
-
-/* NEW: print table wrapper that never scrolls */
+/* Print table wrapper that never scrolls */
 .printTableWrap{
   border:1px solid var(--line);
   border-radius:12px;
@@ -186,14 +183,23 @@ html,body{
   font-weight:900;
   text-align:left;
 }
-.printTable td{color:var(--text)}
 .printTable .num{text-align:right;white-space:nowrap}
 .printTable td:nth-child(2){
   word-wrap:break-word;
   overflow-wrap:anywhere;
 }
 
-/* PRINT: make it a document */
+/* NEW: footer disclaimer (bottom of printout) */
+.printFooterDisclaimer{
+  margin-top:12px;
+  padding-top:10px;
+  border-top:1px solid var(--line);
+  color:var(--muted2);
+  font-size:11px;
+  line-height:1.35;
+}
+
+/* PRINT: make it a document + keep it 1 page */
 @page{
   size: Letter;
   margin: 0.65in;
@@ -211,25 +217,35 @@ html,body{
     margin:0 !important;
   }
 
-  /* remove any scroll artifacts */
-  .tableWrap{display:none !important;}          /* kills the web-style wrap in print */
-  .printTableWrap{overflow:visible !important;border:1px solid #000 !important;border-radius:0 !important}
+  .tableWrap{display:none !important}
 
-  .printHeader{border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:12px}
+  .printHeader{border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:10px}
   .printTitle{color:#000 !important;font-size:20px !important}
   .printDisclaimer,.printMeta{color:#000 !important;opacity:.85 !important}
 
   .printBig{border:1px solid #000 !important;border-radius:0 !important}
   .printBig__label,.printBig__value{color:#000 !important}
 
-  .printSectionTitle{color:#000 !important}
-
+  .printTableWrap{border:1px solid #000 !important;border-radius:0 !important}
   .printTable th{background:#f2f2f2 !important;color:#000 !important;border-bottom:1px solid #000 !important}
   .printTable td{color:#000 !important}
 
   .breakdown{border:1px solid #000 !important;border-radius:0 !important}
   .breakdown__row{border-bottom:1px solid #ddd !important;color:#000 !important}
-  .printNotes__box{border:1px solid #000 !important;border-radius:0 !important}
+
+  .printFooterDisclaimer{
+    border-top:1px solid #000 !important;
+    color:#000 !important;
+    opacity:.85 !important;
+  }
+
+  /* Try to keep it one page */
+  #printQuote{
+    font-size: 12px;
+  }
+  .printBig__value{font-size:20px !important}
+  .breakdown__row{padding:8px 10px !important}
+  .printTable th, .printTable td{padding:8px 10px !important}
 
   .printHeader,.printGrid,.printTableWrap,.breakdown{
     break-inside: avoid;
