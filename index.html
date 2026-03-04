@@ -179,7 +179,10 @@
           <img class="printLogo" src="assets/nes-logo.png" alt="Northwest Extremity Specialists logo" />
           <div>
             <h2 class="printTitle">Surgical Deposit Estimate</h2>
-            <div class="printDisclaimer">Estimate only. Final responsibility may change after insurance adjudication.</div>
+            <!-- UPDATED VERBIAGE -->
+            <div class="printDisclaimer">
+              This is an estimate only for physician charges. Anesthesia and facility charges will be billed separately. Final responsibility may be different after claim processing.
+            </div>
           </div>
         </div>
         <div class="printMeta">
@@ -206,8 +209,6 @@
       </div>
 
       <h3 class="printSectionTitle">Procedure Summary</h3>
-
-      <!-- PRINT TABLE WRAPPER: not scrollable -->
       <div class="printTableWrap">
         <table class="printTable" id="printProcTable">
           <thead>
@@ -239,9 +240,9 @@
         <div class="breakdown__row"><span>OOP Max Remaining</span><span id="printOopRem">$0.00</span></div>
       </div>
 
-      <div class="printNotes">
-        <b>Notes:</b>
-        <div class="printNotes__box"></div>
+      <!-- NEW: bottom-of-printout disclaimer (Joy requested) -->
+      <div class="printFooterDisclaimer">
+        This is an estimate only for physician charges. Anesthesia and facility charges will be billed separately. Final responsibility may be different after claim processing.
       </div>
     </section>
   </main>
