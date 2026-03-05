@@ -38,19 +38,18 @@ module.exports = async function (context, req) {
     payload: JSON.stringify(payload)
   };
 
-  try{
+  try {
     const client = getClient();
-    try{ await client.createTable(); } catch {}
     await client.createEntity(entity);
 
     return jsonResponse(context, 200, {
-      ok:true,
+      ok: true,
       quoteId,
       partitionKey,
       createdAt,
       createdBy
     });
-  } catch (err){
+  } catch (err) {
     return jsonResponse(context, 500, { error: err.message || "Failed to save quote" });
   }
 };
