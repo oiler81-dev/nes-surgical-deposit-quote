@@ -1,62 +1,62 @@
-const { TableClient } = require("@azure/data-tables");
+const { getUserFromSwa, jsonResponse, getClient } = require("../shared/table");
 
-function getUserFromSwa(req) {
-  const b64 = req.headers["x-ms-client-principal"];
-  if (!b64) return null;
-  try {
-    return JSON.parse(Buffer.from(b64, "base64").toString("utf8"));
-  } catch {
-    return null;
-  }
+function compact(ymd){
+  return String(ymd || "").replaceAll("-", "");
 }
-
-function json(res, status, body) {
-  res.status = status;
-  res.headers = { "Content-Type": "application/json" };
-  res.body = body;
-  return res;
+function localTimeString(iso){
+  try{ return new Date(iso).toLocaleString(); } catch { return iso || ""; }
 }
 
 module.exports = async function (context, req) {
   const user = getUserFromSwa(req);
-  if (!user) {
-    context.res = json(context.res, 401, { error: "Not authenticated" });
-    return;
-  }
+  if (!user) return jsonResponse(context, 401, { error: "Not authenticated" });
 
-  const conn = process.env.AZURE_STORAGE_CONNECTION_STRING;
-  const tableName = process.env.QUOTES_TABLE_NAME || "SurgicalDepositQuotes";
-  if (!conn) {
-    context.res = json(context.res, 500, { error: "Missing AZURE_STORAGE_CONNECTION_STRING" });
-    return;
-  }
+  const take = Math.min(parseInt(req.query.take || "50", 10) || 50, 200);
+  const from = compact(req.query.from || "");
+  const to = compact(req.query.to || "");
+  const staff = String(req.query.staff || "").trim().toLowerCase();
+  const clinic = String(req.query.clinic || "").trim().toLowerCase();
+  const provider = String(req.query.provider || "").trim().toLowerCase();
+  const q = String(req.query.q || "").trim().toLowerCase();
 
-  const client = TableClient.fromConnectionString(conn, tableName);
+  try{
+    const client = getClient();
 
-  const take = Math.min(parseInt(req.query.take || "20", 10) || 20, 100);
-  const partitionKey = req.query.date || null; // optional: YYYY-MM-DD
+    let filter = "";
+    if (from && to) filter = `PartitionKey ge '${from}' and PartitionKey le '${to}'`;
+    else if (from) filter = `PartitionKey ge '${from}'`;
+    else if (to) filter = `PartitionKey le '${to}'`;
 
-  try {
     const items = [];
-    const filter = partitionKey ? `PartitionKey eq '${partitionKey}'` : undefined;
-
-    let count = 0;
-    for await (const e of client.listEntities({ queryOptions: { filter } })) {
+    for await (const e of client.listEntities({ queryOptions: { filter: filter || undefined } })) {
       items.push({
         quoteId: e.quoteId,
+        partitionKey: e.partitionKey,
         createdAt: e.createdAt,
+        createdAtLocal: localTimeString(e.createdAt),
         createdBy: e.createdBy,
-        partitionKey: e.partitionKey
+        patientName: e.patientName,
+        provider: e.provider,
+        clinic: e.clinic,
+        recommendedDeposit: e.recommendedDeposit,
+        estimatedOwes: e.estimatedOwes,
+        rowKey: e.rowKey
       });
-      count++;
-      if (count >= take) break;
+      if (items.length > 2000) break;
     }
 
-    // Sort newest first (createdAt is ISO)
-    items.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    let filtered = items;
 
-    context.res = json(context.res, 200, { ok: true, items });
-  } catch (err) {
-    context.res = json(context.res, 500, { error: err.message || "Failed to list quotes" });
+    if (staff) filtered = filtered.filter(x => String(x.createdBy || "").toLowerCase().includes(staff));
+    if (clinic) filtered = filtered.filter(x => String(x.clinic || "").toLowerCase().includes(clinic));
+    if (provider) filtered = filtered.filter(x => String(x.provider || "").toLowerCase().includes(provider));
+    if (q) filtered = filtered.filter(x => String(x.patientName || "").toLowerCase().includes(q));
+
+    filtered.sort((a,b) => String(b.rowKey || "").localeCompare(String(a.rowKey || "")));
+    filtered = filtered.slice(0, take);
+
+    return jsonResponse(context, 200, { ok:true, items: filtered });
+  } catch (err){
+    return jsonResponse(context, 500, { error: err.message || "Failed to list quotes" });
   }
 };
