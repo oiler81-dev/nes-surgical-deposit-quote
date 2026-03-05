@@ -1,79 +1,54 @@
-const { TableClient } = require("@azure/data-tables");
 const { v4: uuidv4 } = require("uuid");
-
-function getUserFromSwa(req) {
-  // SWA sends user info in this header to the API
-  const b64 = req.headers["x-ms-client-principal"];
-  if (!b64) return null;
-  try {
-    const json = Buffer.from(b64, "base64").toString("utf8");
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-}
-
-function json(res, status, body) {
-  res.status = status;
-  res.headers = { "Content-Type": "application/json" };
-  res.body = body;
-  return res;
-}
+const { getUserFromSwa, jsonResponse, getClient, ymdCompact, isoNow } = require("../shared/table");
 
 module.exports = async function (context, req) {
   const user = getUserFromSwa(req);
-  if (!user) {
-    context.res = json(context.res, 401, { error: "Not authenticated" });
-    return;
-  }
+  if (!user) return jsonResponse(context, 401, { error: "Not authenticated" });
 
-  const conn = process.env.AZURE_STORAGE_CONNECTION_STRING;
-  const tableName = process.env.QUOTES_TABLE_NAME || "SurgicalDepositQuotes";
-  if (!conn) {
-    context.res = json(context.res, 500, { error: "Missing AZURE_STORAGE_CONNECTION_STRING" });
-    return;
-  }
-
-  const body = req.body || {};
+  const payload = req.body || {};
   const quoteId = uuidv4();
 
   const now = new Date();
-  const yyyy = now.getUTCFullYear();
-  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(now.getUTCDate()).padStart(2, "0");
-  const partitionKey = `${yyyy}-${mm}-${dd}`; // daily partition (fast list by day)
+  const partitionKey = ymdCompact(now); // YYYYMMDD
+  const rowKey = `${now.getTime()}_${quoteId}`; // sort newest
 
-  const rowKey = quoteId;
+  const createdAt = isoNow();
+  const createdBy = user.userDetails || "unknown";
+
+  const totals = payload.totals || {};
+  const patientName = String(payload.patientName || "").slice(0, 200);
+  const clinic = String(payload.clinic || "").slice(0, 200);
 
   const entity = {
     partitionKey,
     rowKey,
 
     quoteId,
-    createdAt: now.toISOString(),
-    createdBy: user.userDetails || "unknown",
-    identityProvider: user.identityProvider || "aad",
+    createdAt,
+    createdBy,
 
-    // Store the full quote payload as JSON
-    payload: JSON.stringify(body)
+    patientName,
+    clinic,
+
+    recommendedDeposit: Number(totals.recommendedDeposit || 0),
+    estimatedOwes: Number(totals.estimatedOwes || 0),
+
+    payload: JSON.stringify(payload)
   };
 
-  const client = TableClient.fromConnectionString(conn, tableName);
-
-  try {
-    // Ensure table exists (safe to call; if it exists, it throws sometimes depending on permissions)
-    try { await client.createTable(); } catch {}
-
+  try{
+    const client = getClient();
+    try{ await client.createTable(); } catch {}
     await client.createEntity(entity);
 
-    context.res = json(context.res, 200, {
-      ok: true,
+    return jsonResponse(context, 200, {
+      ok:true,
       quoteId,
       partitionKey,
-      createdAt: entity.createdAt,
-      createdBy: entity.createdBy
+      createdAt,
+      createdBy
     });
-  } catch (err) {
-    context.res = json(context.res, 500, { error: err.message || "Failed to save quote" });
+  } catch (err){
+    return jsonResponse(context, 500, { error: err.message || "Failed to save quote" });
   }
 };
