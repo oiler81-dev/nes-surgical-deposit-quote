@@ -3,257 +3,91 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Surgical Deposit Estimate</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <title>Estimate Tool</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
-
 <body>
   <header class="topbar">
-    <div class="topbar-left">
-      <div class="brand">
-        <div class="brand-title">Surgical Deposit Estimate</div>
-        <div class="brand-sub">Estimate tool (NES)</div>
-      </div>
+    <div class="brand">
+      <div class="brand-title">Estimate Tool</div>
+      <div class="brand-sub">CPT + Provider dropdowns restored</div>
     </div>
-
-    <div class="topbar-right">
-      <button id="adminBtn" class="btn secondary" style="display:none">Admin</button>
-      <button id="logoutBtn" class="btn secondary">Logout</button>
+    <div class="actions">
+      <button id="addRowBtn" class="btn">Add Row</button>
+      <button id="saveQuoteBtn" class="btn primary">Save Quote</button>
+      <button id="clearBtn" class="btn danger">Clear</button>
     </div>
   </header>
 
-  <main class="container">
-    <div class="card">
-      <div class="row">
-        <div class="pill" id="signedInPill">Signed In</div>
-        <div class="spacer"></div>
-        <a class="link" href="/feeSchedule.sample.csv" download>Download sample CSV</a>
+  <main class="wrap">
+    <section class="card">
+      <h2>Quote Details</h2>
+
+      <div class="grid">
+        <label>
+          Patient Name
+          <input id="patientName" type="text" placeholder="e.g., John Doe" />
+        </label>
+        <label>
+          Date
+          <input id="quoteDate" type="date" />
+        </label>
+        <label>
+          Notes
+          <input id="quoteNotes" type="text" placeholder="optional" />
+        </label>
       </div>
 
-      <!-- 1) Fee Schedule -->
-      <section class="section">
-        <h2>1) Fee Schedule</h2>
-        <div class="row">
-          <div class="grow">
-            <label class="label">Upload Fee Schedule CSV</label>
-            <input id="feeFile" type="file" accept=".csv" />
-            <div class="hint">Required columns: CPT, Description (optional), and an Allowed column (Allowed/AllowedAmount/Allowable).</div>
-          </div>
-          <div class="card mini grow">
-            <div class="mini-title">Loaded Fee Schedule</div>
-            <div id="feeLoadedText" class="mini-value">No fee schedule loaded</div>
-          </div>
+      <div class="table-wrap">
+        <table class="table" id="quoteTable">
+          <thead>
+            <tr>
+              <th style="width: 180px;">Provider</th>
+              <th style="width: 140px;">CPT</th>
+              <th>Description</th>
+              <th style="width: 120px;">Fee</th>
+              <th style="width: 110px;">Qty</th>
+              <th style="width: 130px;">Line Total</th>
+              <th style="width: 80px;"></th>
+            </tr>
+          </thead>
+          <tbody id="rowsTbody">
+            <!-- rows injected -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="totals">
+        <div class="totals-row">
+          <div class="totals-label">Subtotal</div>
+          <div class="totals-value" id="subtotal">$0.00</div>
         </div>
-
-        <details style="margin-top:10px">
-          <summary>Preview loaded fee schedule</summary>
-          <div class="tableWrap" style="margin-top:10px">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>CPT</th>
-                  <th>Description</th>
-                  <th class="right">Allowed</th>
-                </tr>
-              </thead>
-              <tbody id="feePreviewTbody">
-                <tr><td colspan="3" class="muted">No data yet.</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </details>
-      </section>
-
-      <!-- 2) Quote Inputs -->
-      <section class="section">
-        <h2>2) Quote Inputs</h2>
-
-        <div class="grid">
-          <div>
-            <label class="label">Patient Name</label>
-            <input id="patientName" placeholder="Test. Patient" />
-          </div>
-
-          <div>
-            <label class="label">Insurance Plan</label>
-            <input id="insurancePlan" placeholder="PPO" />
-          </div>
-
-          <div>
-            <label class="label">Prepared By</label>
-            <input id="preparedBy" placeholder="(auto-filled)" />
-          </div>
-
-          <div>
-            <label class="label">Clinic</label>
-            <input id="clinic" placeholder="NES" />
-          </div>
-
-          <div>
-            <label class="label">Provider</label>
-            <input id="provider" placeholder="Dr. ..." />
-          </div>
-
-          <div>
-            <label class="label">Copay</label>
-            <input id="copay" type="number" min="0" step="0.01" value="0" />
-          </div>
-
-          <div>
-            <label class="label">Deductible Remaining</label>
-            <input id="deductibleRemaining" type="number" min="0" step="0.01" value="0" />
-          </div>
-
-          <div>
-            <label class="label">Coinsurance % (patient)</label>
-            <input id="coinsurancePct" type="number" min="0" max="1" step="0.01" value="0.2" />
-            <div class="hint">Enter as decimal. Example: 20% → 0.20</div>
-          </div>
-
-          <div>
-            <label class="label">OOP Max Remaining</label>
-            <input id="oopMaxRemaining" type="number" min="0" step="0.01" value="0" />
-          </div>
+        <div class="totals-row">
+          <div class="totals-label">Estimated Total</div>
+          <div class="totals-value big" id="grandTotal">$0.00</div>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <!-- 3) Procedures -->
-      <section class="section">
-        <h2>3) Procedures</h2>
-
-        <div class="row">
-          <div class="grow">
-            <div class="hint">Add procedures by CPT. Allowed pulls from fee schedule. Multi-procedure adjustment is applied in app.js.</div>
-          </div>
-          <div class="row">
-            <button id="addProcBtn" class="btn secondary">Add Procedure</button>
-          </div>
+    <section class="card">
+      <div class="history-header">
+        <h2>Quote History</h2>
+        <div class="actions">
+          <button id="exportHistoryBtn" class="btn">Export CSV</button>
+          <button id="clearHistoryBtn" class="btn danger">Clear History</button>
         </div>
+      </div>
 
-        <div class="tableWrap" style="margin-top:10px">
-          <table class="table">
-            <thead>
-              <tr>
-                <th style="width:160px">CPT</th>
-                <th>Description</th>
-                <th style="width:90px">Qty</th>
-                <th style="width:130px" class="right">Allowed</th>
-                <th style="width:90px" class="right">Adj %</th>
-                <th style="width:140px" class="right">Adj Allowed</th>
-                <th style="width:120px" class="right">Line Total</th>
-                <th style="width:80px"></th>
-              </tr>
-            </thead>
-            <tbody id="procTbody">
-              <tr><td colspan="8" class="muted">No procedures yet.</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="kpiGrid" style="margin-top:12px">
-          <div class="kpi">
-            <div class="kpiLabel">Total Allowed (after multi-proc adjustment)</div>
-            <div id="kTotalAllowed" class="kpiValue">$0.00</div>
-          </div>
-          <div class="kpi">
-            <div class="kpiLabel">Deductible Applied</div>
-            <div id="kDedApplied" class="kpiValue">$0.00</div>
-          </div>
-          <div class="kpi">
-            <div class="kpiLabel">Coinsurance Amount</div>
-            <div id="kCoinsurance" class="kpiValue">$0.00</div>
-          </div>
-          <div class="kpi">
-            <div class="kpiLabel">Copay</div>
-            <div id="kCopay" class="kpiValue">$0.00</div>
-          </div>
-          <div class="kpi">
-            <div class="kpiLabel">Estimated Amount Due (OOP capped)</div>
-            <div id="kDue" class="kpiValue">$0.00</div>
-          </div>
-          <div class="kpi">
-            <div class="kpiLabel">Recommended Deposit</div>
-            <div id="kDeposit" class="kpiValue">$0.00</div>
-          </div>
-        </div>
-
-        <div class="row" style="margin-top:12px">
-          <button id="saveQuoteBtn" class="btn">Save Quote</button>
-          <button id="printQuoteBtn" class="btn secondary">Print Quote</button>
-          <button id="resetBtn" class="btn danger">Reset</button>
-        </div>
-      </section>
-
-      <!-- 4) Quote History -->
-      <section class="section">
-        <h2>4) Quote History</h2>
-
-        <div id="qhError" class="errorBox" style="display:none"></div>
-
-        <div class="grid">
-          <div>
-            <label class="label">From</label>
-            <input id="qhFrom" type="date" />
-          </div>
-          <div>
-            <label class="label">To</label>
-            <input id="qhTo" type="date" />
-          </div>
-          <div>
-            <label class="label">Max results</label>
-            <input id="qhTake" type="number" min="1" max="200" value="50" />
-          </div>
-
-          <div>
-            <label class="label">Search Patient</label>
-            <input id="qhSearch" placeholder="John" />
-          </div>
-          <div>
-            <label class="label">Filter by Staff</label>
-            <input id="qhStaff" placeholder="nperz@..." />
-          </div>
-          <div>
-            <label class="label">Filter by Clinic</label>
-            <input id="qhClinic" placeholder="Cedar Mill" />
-          </div>
-          <div>
-            <label class="label">Filter by Provider</label>
-            <input id="qhProvider" placeholder="Dr. Lastname" />
-          </div>
-        </div>
-
-        <div class="row" style="margin-top:10px">
-          <button id="qhTodayBtn" class="btn secondary">Today</button>
-          <button id="qhWeekBtn" class="btn secondary">This Week</button>
-          <button id="qhExportBtn" class="btn secondary">Export CSV</button>
-          <button id="qhRefreshBtn" class="btn">Refresh</button>
-        </div>
-
-        <div class="tableWrap" style="margin-top:10px">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Date/Time</th>
-                <th>Patient</th>
-                <th>Provider</th>
-                <th>Clinic</th>
-                <th>Staff</th>
-                <th class="right">Recommended Deposit</th>
-                <th class="right">Estimated Due</th>
-                <th>Open</th>
-              </tr>
-            </thead>
-            <tbody id="qhTbody">
-              <tr><td colspan="8" class="muted">No data yet.</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="footnote">Internal use only. Estimates may change after claim processing.</div>
-      </section>
-    </div>
+      <div id="historyList" class="history">
+        <!-- history injected -->
+      </div>
+    </section>
   </main>
 
-  <script src="/app.js"></script>
+  <footer class="footer">
+    <small>Stored locally in your browser (localStorage).</small>
+  </footer>
+
+  <script src="app.js"></script>
 </body>
 </html>
