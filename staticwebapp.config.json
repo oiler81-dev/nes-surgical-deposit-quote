@@ -1,21 +1,12 @@
 {
   "routes": [
-    {
-      "route": "/admin.html",
-      "allowedRoles": ["admin"]
-    },
-    {
-      "route": "/api/admin-report",
-      "allowedRoles": ["admin"]
-    },
-    {
-      "route": "/api/*",
-      "allowedRoles": ["authenticated"]
-    },
-    {
-      "route": "/*",
-      "allowedRoles": ["authenticated"]
-    }
+    { "route": "/admin.html", "allowedRoles": ["admin"] },
+
+    { "route": "/api/admin-report", "allowedRoles": ["admin"] },
+
+    { "route": "/api/*", "allowedRoles": ["authenticated"] },
+
+    { "route": "/*", "allowedRoles": ["authenticated"] }
   ],
   "responseOverrides": {
     "401": {
