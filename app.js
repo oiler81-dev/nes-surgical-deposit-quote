@@ -1,8 +1,12 @@
+/* =========================
+   STATE + HELPERS
+   ========================= */
 const state = {
   feeMap: new Map(),
   rows: [],
   maxRows: 10,
-  lastHistoryItems: [] // for export
+  lastHistoryItems: [],
+  adminLastExport: []
 };
 
 const $ = (id) => document.getElementById(id);
@@ -53,6 +57,10 @@ function escapeHtml(s){
     .replaceAll('"',"&quot;")
     .replaceAll("'","&#039;");
 }
+
+/* =========================
+   CSV PARSING
+   ========================= */
 function splitCSVLine(line){
   const out = [];
   let cur = "";
@@ -138,6 +146,9 @@ function parseCSV(text){
   return out;
 }
 
+/* =========================
+   ROWS / TABLE
+   ========================= */
 function initRows(){
   state.rows = [];
   for (let i=0;i<state.maxRows;i++){
@@ -147,7 +158,17 @@ function initRows(){
     });
   }
 }
-
+function renderCptList(){
+  const dl = $("cptList");
+  if (!dl) return;
+  dl.innerHTML = "";
+  for (const [cpt,v] of state.feeMap.entries()){
+    const opt = document.createElement("option");
+    opt.value = cpt;
+    opt.label = v.desc || "";
+    dl.appendChild(opt);
+  }
+}
 function renderFeePreview(){
   if (!$("feeCount")) return;
   $("feeCount").textContent = String(state.feeMap.size);
@@ -169,19 +190,6 @@ function renderFeePreview(){
     tbody.appendChild(tr);
   }
 }
-
-function renderCptList(){
-  const dl = $("cptList");
-  if (!dl) return;
-  dl.innerHTML = "";
-  for (const [cpt,v] of state.feeMap.entries()){
-    const opt = document.createElement("option");
-    opt.value = cpt;
-    opt.label = v.desc || "";
-    dl.appendChild(opt);
-  }
-}
-
 function loadFeeSchedule(items){
   state.feeMap.clear();
   for (const it of items){
@@ -191,7 +199,6 @@ function loadFeeSchedule(items){
   renderCptList();
   recalcAll();
 }
-
 function renderProcTable(){
   const tbody = $("procTbody");
   if (!tbody) return;
@@ -217,7 +224,6 @@ function renderProcTable(){
     inp.addEventListener("change", onProcInput);
   });
 }
-
 function onProcInput(e){
   const rowIdx = parseInt(e.target.getAttribute("data-row"), 10);
   const field = e.target.getAttribute("data-field");
@@ -233,7 +239,6 @@ function onProcInput(e){
   }
   recalcAll();
 }
-
 function renderProcOutputs(){
   const tbody = $("procTbody");
   if (!tbody) return;
@@ -258,6 +263,9 @@ function renderProcOutputs(){
   }
 }
 
+/* =========================
+   PRINT RENDER
+   ========================= */
 function renderPrintable(calc){
   if (!$("printDate")) return;
 
@@ -268,6 +276,7 @@ function renderPrintable(calc){
   $("printInsurance").textContent = $("insurancePlan")?.value || "";
   $("printPreparedBy").textContent = $("preparedBy")?.value || "";
   $("printClinic").textContent = $("clinic")?.value || "";
+  if ($("printProvider")) $("printProvider").textContent = $("provider")?.value || "";
 
   $("printEstOwes").textContent = money(calc.estOwes);
   $("printRecDeposit").textContent = money(calc.recDeposit);
@@ -298,20 +307,20 @@ function renderPrintable(calc){
   }
 }
 
+/* =========================
+   CALC
+   ========================= */
 function recalcAll(){
-  // enrich from fee schedule
   for (const r of state.rows){
     const cpt = normalizeCpt(r.cpt);
     r.cpt = cpt;
     if (!cpt){ r.desc=""; r.allowed=0; r.notFound=false; continue; }
-
     const hit = state.feeMap.get(cpt);
     r.desc = hit ? hit.desc : "";
     r.allowed = hit ? hit.allowed : 0;
     r.notFound = !hit;
   }
 
-  // multi-proc
   let seen = 0;
   for (const r of state.rows){
     if (r.cpt){
@@ -351,11 +360,11 @@ function recalcAll(){
 }
 
 /* =========================
-   AUTH + ROLE UI
+   AUTH
    ========================= */
 async function getMe(){
   try{
-    const r = await fetch("/.auth/me", { credentials: "include" });
+    const r = await fetch("/.auth/me", { credentials:"include" });
     if (!r.ok) return null;
     const data = await r.json();
     return data?.clientPrincipal || null;
@@ -363,18 +372,14 @@ async function getMe(){
     return null;
   }
 }
-
 function hasRole(me, role){
   const roles = me?.userRoles || [];
   return roles.includes(role);
 }
-
 async function hydrateUserUI(){
   const me = await getMe();
   const who = $("whoAmI") || $("adminWhoAmI");
-  if (who){
-    who.textContent = me ? `Signed in: ${me.userDetails}` : "Signed in";
-  }
+  if (who) who.textContent = me ? `Signed in: ${me.userDetails}` : "Signed in";
 
   if ($("preparedBy") && me && !$("preparedBy").value){
     $("preparedBy").value = me.userDetails || "";
@@ -382,15 +387,15 @@ async function hydrateUserUI(){
 
   const adminLink = $("adminLink");
   if (adminLink){
-    adminLink.style.display = (me && hasRole(me, "admin")) ? "inline-block" : "none";
+    adminLink.style.display = (me && hasRole(me,"admin")) ? "inline-block" : "none";
   }
 }
 
 /* =========================
-   API HELPERS
+   API
    ========================= */
 async function apiGet(path){
-  const r = await fetch(path, { credentials: "include" });
+  const r = await fetch(path, { credentials:"include" });
   const text = await r.text();
   if (!r.ok) throw new Error(text || r.statusText);
   return text ? JSON.parse(text) : {};
@@ -408,61 +413,53 @@ async function apiPost(path, body){
 }
 
 /* =========================
-   QUOTE SAVE + LOAD
+   QUOTE SAVE/LOAD
    ========================= */
-function getNumberFromCurrencyText(s){
-  return parseMoney(String(s || ""));
-}
-
 function buildQuotePayload(){
   return {
     patientName: $("patientName")?.value || "",
     insurancePlan: $("insurancePlan")?.value || "",
     preparedBy: $("preparedBy")?.value || "",
     clinic: $("clinic")?.value || "",
+    provider: $("provider")?.value || "",
     copay: numVal($("copay")),
     deductibleRemaining: numVal($("dedRem")),
     coinsurancePct: numVal($("coinsPct")),
     oopMaxRemaining: numVal($("oopRem")),
     procedures: state.rows.filter(r => r.cpt).map(r => ({
-      cpt: r.cpt,
-      desc: r.desc,
-      qty: r.qty,
-      allowed: r.allowed,
-      adjPct: r.adjPct,
-      adjAllowed: r.adjAllowed,
-      lineTotal: r.lineTotal
+      cpt: r.cpt, desc: r.desc, qty: r.qty,
+      allowed: r.allowed, adjPct: r.adjPct,
+      adjAllowed: r.adjAllowed, lineTotal: r.lineTotal
     })),
     totals: {
-      totalAllowedAdjusted: getNumberFromCurrencyText($("totalAllowed")?.textContent),
-      deductibleApplied: getNumberFromCurrencyText($("dedApplied")?.textContent),
-      coinsuranceAmount: getNumberFromCurrencyText($("coinsAmt")?.textContent),
-      copay: getNumberFromCurrencyText($("copayOut")?.textContent),
-      estimatedOwes: getNumberFromCurrencyText($("estOwes")?.textContent),
-      recommendedDeposit: getNumberFromCurrencyText($("recDeposit")?.textContent)
+      totalAllowedAdjusted: parseMoney($("totalAllowed")?.textContent),
+      deductibleApplied: parseMoney($("dedApplied")?.textContent),
+      coinsuranceAmount: parseMoney($("coinsAmt")?.textContent),
+      copay: parseMoney($("copayOut")?.textContent),
+      estimatedOwes: parseMoney($("estOwes")?.textContent),
+      recommendedDeposit: parseMoney($("recDeposit")?.textContent)
     }
   };
 }
-
 async function saveCurrentQuote(){
   const payload = buildQuotePayload();
   const res = await apiPost("/api/quotes", payload);
   alert(`Saved quote: ${res.quoteId}`);
   await loadQuoteHistory();
 }
-
 function loadQuoteIntoUI(payload){
   if (!payload) return;
 
-  if ($("patientName")) $("patientName").value = payload.patientName || "";
-  if ($("insurancePlan")) $("insurancePlan").value = payload.insurancePlan || "";
-  if ($("preparedBy")) $("preparedBy").value = payload.preparedBy || "";
-  if ($("clinic")) $("clinic").value = payload.clinic || "";
+  $("patientName") && ($("patientName").value = payload.patientName || "");
+  $("insurancePlan") && ($("insurancePlan").value = payload.insurancePlan || "");
+  $("preparedBy") && ($("preparedBy").value = payload.preparedBy || "");
+  $("clinic") && ($("clinic").value = payload.clinic || "");
+  $("provider") && ($("provider").value = payload.provider || "");
 
-  if ($("copay")) $("copay").value = payload.copay ?? 0;
-  if ($("dedRem")) $("dedRem").value = payload.deductibleRemaining ?? 0;
-  if ($("coinsPct")) $("coinsPct").value = payload.coinsurancePct ?? 0.2;
-  if ($("oopRem")) $("oopRem").value = payload.oopMaxRemaining ?? 999999;
+  $("copay") && ($("copay").value = payload.copay ?? 0);
+  $("dedRem") && ($("dedRem").value = payload.deductibleRemaining ?? 0);
+  $("coinsPct") && ($("coinsPct").value = payload.coinsurancePct ?? 0.2);
+  $("oopRem") && ($("oopRem").value = payload.oopMaxRemaining ?? 999999);
 
   initRows();
   const procs = payload.procedures || [];
@@ -475,7 +472,7 @@ function loadQuoteIntoUI(payload){
 }
 
 /* =========================
-   HISTORY (filters/search/export)
+   HISTORY
    ========================= */
 function ymd(d){
   const yyyy = d.getFullYear();
@@ -483,22 +480,20 @@ function ymd(d){
   const dd = String(d.getDate()).padStart(2,"0");
   return `${yyyy}-${mm}-${dd}`;
 }
-
 function setHistoryRangeToday(){
   const d = new Date();
-  if ($("historyFrom")) $("historyFrom").value = ymd(d);
-  if ($("historyTo")) $("historyTo").value = ymd(d);
+  $("historyFrom") && ($("historyFrom").value = ymd(d));
+  $("historyTo") && ($("historyTo").value = ymd(d));
 }
 function setHistoryRangeThisWeek(){
   const d = new Date();
-  const day = d.getDay(); // 0 sun
+  const day = d.getDay();
   const diffToMon = (day === 0 ? 6 : day - 1);
   const mon = new Date(d);
   mon.setDate(d.getDate() - diffToMon);
-  if ($("historyFrom")) $("historyFrom").value = ymd(mon);
-  if ($("historyTo")) $("historyTo").value = ymd(d);
+  $("historyFrom") && ($("historyFrom").value = ymd(mon));
+  $("historyTo") && ($("historyTo").value = ymd(d));
 }
-
 function buildHistoryQuery(){
   const params = new URLSearchParams();
   const take = Math.min(parseInt($("historyTake")?.value || "50",10) || 50, 200);
@@ -511,20 +506,21 @@ function buildHistoryQuery(){
 
   const staff = ($("historyStaff")?.value || "").trim();
   const clinic = ($("historyClinic")?.value || "").trim();
+  const provider = ($("historyProvider")?.value || "").trim();
   const q = ($("historySearch")?.value || "").trim();
 
   if (staff) params.set("staff", staff);
   if (clinic) params.set("clinic", clinic);
+  if (provider) params.set("provider", provider);
   if (q) params.set("q", q);
 
   return params.toString();
 }
-
 async function loadQuoteHistory(){
   const tbody = $("historyTbody");
   if (!tbody) return;
 
-  tbody.innerHTML = `<tr><td colspan="7">Loading…</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="8">Loading…</td></tr>`;
   try{
     const qs = buildHistoryQuery();
     const res = await apiGet(`/api/quotes?${qs}`);
@@ -533,7 +529,7 @@ async function loadQuoteHistory(){
 
     tbody.innerHTML = "";
     if (items.length === 0){
-      tbody.innerHTML = `<tr><td colspan="7">No quotes found for the selected filters.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8">No quotes found for the selected filters.</td></tr>`;
       return;
     }
 
@@ -542,6 +538,7 @@ async function loadQuoteHistory(){
       tr.innerHTML = `
         <td>${escapeHtml(it.createdAtLocal || it.createdAt || "")}</td>
         <td>${escapeHtml(it.patientName || "")}</td>
+        <td>${escapeHtml(it.provider || "")}</td>
         <td>${escapeHtml(it.clinic || "")}</td>
         <td>${escapeHtml(it.createdBy || "")}</td>
         <td class="num">${money(Number(it.recommendedDeposit || 0))}</td>
@@ -561,15 +558,12 @@ async function loadQuoteHistory(){
       });
     });
   } catch(err){
-    tbody.innerHTML = `<tr><td colspan="7">Error: ${escapeHtml(err.message || String(err))}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8">Error: ${escapeHtml(err.message || String(err))}</td></tr>`;
   }
 }
-
 function exportHistoryCsv(){
   const items = state.lastHistoryItems || [];
-  const headers = [
-    "createdAt","patientName","clinic","createdBy","recommendedDeposit","estimatedOwes","quoteId","partitionKey"
-  ];
+  const headers = ["createdAt","patientName","provider","clinic","createdBy","recommendedDeposit","estimatedOwes","quoteId","partitionKey"];
   const rows = [headers.join(",")];
 
   for (const it of items){
@@ -593,12 +587,120 @@ function exportHistoryCsv(){
 }
 
 /* =========================
+   SIMPLE CANVAS CHARTS
+   ========================= */
+function drawBarChart(canvasId, items, labelKey, valueKey, topN=10){
+  const c = $(canvasId);
+  if (!c) return;
+  const ctx = c.getContext("2d");
+
+  const data = (items || []).slice(0, topN);
+  const labels = data.map(x => String(x[labelKey] || ""));
+  const values = data.map(x => Number(x[valueKey] || 0));
+
+  // clear
+  ctx.clearRect(0,0,c.width,c.height);
+
+  const w = c.width;
+  const h = c.height;
+  const pad = 36;
+  const maxV = Math.max(...values, 1);
+
+  // axes
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad, pad/2);
+  ctx.lineTo(pad, h - pad);
+  ctx.lineTo(w - pad/2, h - pad);
+  ctx.stroke();
+
+  const barW = (w - pad*1.5) / Math.max(values.length, 1);
+  for (let i=0;i<values.length;i++){
+    const v = values[i];
+    const x = pad + i*barW + barW*0.12;
+    const bw = barW*0.76;
+    const bh = (h - pad*1.5) * (v / maxV);
+    const y = (h - pad) - bh;
+
+    ctx.fillRect(x, y, bw, bh);
+
+    // label (trim)
+    const lbl = labels[i].length > 14 ? labels[i].slice(0,14)+"…" : labels[i];
+    ctx.save();
+    ctx.translate(x + bw/2, h - pad + 12);
+    ctx.rotate(-0.35);
+    ctx.textAlign = "center";
+    ctx.font = "12px Montserrat, Arial";
+    ctx.fillText(lbl, 0, 0);
+    ctx.restore();
+  }
+
+  // title/value key is handled by HTML label
+}
+
+function drawLineChart(canvasId, items, xKey, yKey){
+  const c = $(canvasId);
+  if (!c) return;
+  const ctx = c.getContext("2d");
+
+  const data = (items || []).slice().sort((a,b) => String(a[xKey]).localeCompare(String(b[xKey])));
+  const xs = data.map(d => String(d[xKey] || ""));
+  const ys = data.map(d => Number(d[yKey] || 0));
+
+  ctx.clearRect(0,0,c.width,c.height);
+
+  const w = c.width;
+  const h = c.height;
+  const pad = 40;
+
+  const maxY = Math.max(...ys, 1);
+
+  // axes
+  ctx.beginPath();
+  ctx.moveTo(pad, pad/2);
+  ctx.lineTo(pad, h - pad);
+  ctx.lineTo(w - pad/2, h - pad);
+  ctx.stroke();
+
+  if (ys.length < 2) return;
+
+  const stepX = (w - pad*1.5) / (ys.length - 1);
+
+  // line
+  ctx.beginPath();
+  for (let i=0;i<ys.length;i++){
+    const x = pad + i*stepX;
+    const y = (h - pad) - ((h - pad*1.5) * (ys[i] / maxY));
+    if (i===0) ctx.moveTo(x,y);
+    else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // dots + a few labels
+  for (let i=0;i<ys.length;i++){
+    const x = pad + i*stepX;
+    const y = (h - pad) - ((h - pad*1.5) * (ys[i] / maxY));
+    ctx.beginPath();
+    ctx.arc(x,y,2.5,0,Math.PI*2);
+    ctx.fill();
+
+    if (i===0 || i===ys.length-1 || (ys.length>6 && i%Math.ceil(ys.length/6)===0)){
+      const lbl = xs[i];
+      ctx.font = "12px Montserrat, Arial";
+      ctx.textAlign = "center";
+      ctx.fillText(lbl, x, h - pad + 14);
+    }
+  }
+}
+
+/* =========================
    ADMIN DASHBOARD
    ========================= */
 function setAdminRangeToday(){
   const d = new Date();
-  if ($("adminFrom")) $("adminFrom").value = ymd(d);
-  if ($("adminTo")) $("adminTo").value = ymd(d);
+  $("adminFrom") && ($("adminFrom").value = ymd(d));
+  $("adminTo") && ($("adminTo").value = ymd(d));
 }
 function setAdminRangeThisWeek(){
   const d = new Date();
@@ -606,21 +708,21 @@ function setAdminRangeThisWeek(){
   const diffToMon = (day === 0 ? 6 : day - 1);
   const mon = new Date(d);
   mon.setDate(d.getDate() - diffToMon);
-  if ($("adminFrom")) $("adminFrom").value = ymd(mon);
-  if ($("adminTo")) $("adminTo").value = ymd(d);
+  $("adminFrom") && ($("adminFrom").value = ymd(mon));
+  $("adminTo") && ($("adminTo").value = ymd(d));
 }
-
 function buildAdminQuery(){
   const params = new URLSearchParams();
   const from = $("adminFrom")?.value || "";
   const to = $("adminTo")?.value || "";
   const clinic = ($("adminClinic")?.value || "").trim();
+  const provider = ($("adminProvider")?.value || "").trim();
   if (from) params.set("from", from);
   if (to) params.set("to", to);
   if (clinic) params.set("clinic", clinic);
+  if (provider) params.set("provider", provider);
   return params.toString();
 }
-
 function renderAggTable(tbodyId, items, labelKey){
   const tbody = $(tbodyId);
   if (!tbody) return;
@@ -642,7 +744,6 @@ function renderAggTable(tbodyId, items, labelKey){
     tbody.appendChild(tr);
   }
 }
-
 async function loadAdminReport(){
   if (!$("sumQuotes")) return;
 
@@ -660,17 +761,23 @@ async function loadAdminReport(){
 
     renderAggTable("byStaffTbody", res.byStaff, "staff");
     renderAggTable("byClinicTbody", res.byClinic, "clinic");
+    renderAggTable("byProviderTbody", res.byProvider, "provider");
     renderAggTable("byDateTbody", res.byDate, "date");
 
-    window.__admin_last_export = res.exportItems || [];
+    state.adminLastExport = res.exportItems || [];
+
+    // Charts
+    drawBarChart("chartDepositsByProvider", res.byProvider, "provider", "deposits", 10);
+    drawBarChart("chartQuotesByStaff", res.byStaff, "staff", "quotes", 10);
+    drawLineChart("chartDepositsByDate", res.byDate, "date", "deposits");
+
   } catch(err){
     alert(`Admin report error: ${err.message || err}`);
   }
 }
-
 function exportAdminCsv(){
-  const items = window.__admin_last_export || [];
-  const headers = ["date","createdAt","patientName","clinic","createdBy","recommendedDeposit","estimatedOwes","quoteId"];
+  const items = state.adminLastExport || [];
+  const headers = ["date","createdAt","patientName","provider","clinic","createdBy","recommendedDeposit","estimatedOwes","quoteId"];
   const rows = [headers.join(",")];
 
   for (const it of items){
@@ -694,27 +801,26 @@ function exportAdminCsv(){
 }
 
 /* =========================
-   WIRING / BOOT
+   WIRING
    ========================= */
 function hookInputs(){
-  ["patientName","insurancePlan","preparedBy","clinic","copay","dedRem","coinsPct","oopRem"]
+  ["patientName","insurancePlan","preparedBy","clinic","provider","copay","dedRem","coinsPct","oopRem"]
     .forEach(id => $(id)?.addEventListener("input", recalcAll));
 }
-
 function resetAll(){
-  if ($("patientName")) $("patientName").value = "";
-  if ($("insurancePlan")) $("insurancePlan").value = "";
-  if ($("clinic")) $("clinic").value = "";
-  if ($("copay")) $("copay").value = "0";
-  if ($("dedRem")) $("dedRem").value = "0";
-  if ($("coinsPct")) $("coinsPct").value = "0.20";
-  if ($("oopRem")) $("oopRem").value = "999999";
+  $("patientName") && ($("patientName").value = "");
+  $("insurancePlan") && ($("insurancePlan").value = "");
+  $("clinic") && ($("clinic").value = "");
+  $("provider") && ($("provider").value = "");
+  $("copay") && ($("copay").value = "0");
+  $("dedRem") && ($("dedRem").value = "0");
+  $("coinsPct") && ($("coinsPct").value = "0.20");
+  $("oopRem") && ($("oopRem").value = "999999");
 
   initRows();
   renderProcTable();
   recalcAll();
 }
-
 function initFeeUpload(){
   const feeFile = $("feeFile");
   if (!feeFile) return;
@@ -730,7 +836,6 @@ function initFeeUpload(){
     }
   });
 }
-
 async function loadSampleFeeSchedule(){
   try{
     const res = await fetch("feeSchedule.sample.csv", { cache:"no-store" });
@@ -740,7 +845,6 @@ async function loadSampleFeeSchedule(){
     loadFeeSchedule(items);
   } catch {}
 }
-
 function initButtons(){
   $("btnPrint")?.addEventListener("click", () => window.print());
   $("btnReset")?.addEventListener("click", () => {
@@ -748,30 +852,28 @@ function initButtons(){
   });
   $("btnSaveQuote")?.addEventListener("click", () => saveCurrentQuote());
 
-  // History buttons
   $("btnToday")?.addEventListener("click", async () => { setHistoryRangeToday(); await loadQuoteHistory(); });
   $("btnThisWeek")?.addEventListener("click", async () => { setHistoryRangeThisWeek(); await loadQuoteHistory(); });
   $("btnHistoryRefresh")?.addEventListener("click", () => loadQuoteHistory());
   $("btnHistoryExport")?.addEventListener("click", () => exportHistoryCsv());
 
-  // History filters (debounced)
   let t = null;
   const onHistChange = () => {
     clearTimeout(t);
     t = setTimeout(() => loadQuoteHistory(), 300);
   };
-  ["historySearch","historyStaff","historyClinic","historyFrom","historyTo","historyTake"].forEach(id => {
+  ["historySearch","historyStaff","historyClinic","historyProvider","historyFrom","historyTo","historyTake"].forEach(id => {
     $(id)?.addEventListener("input", onHistChange);
     $(id)?.addEventListener("change", onHistChange);
   });
 
-  // Admin buttons
+  // admin
   $("btnAdminToday")?.addEventListener("click", async () => { setAdminRangeToday(); await loadAdminReport(); });
   $("btnAdminThisWeek")?.addEventListener("click", async () => { setAdminRangeThisWeek(); await loadAdminReport(); });
   $("btnAdminRefresh")?.addEventListener("click", () => loadAdminReport());
   $("btnAdminExport")?.addEventListener("click", () => exportAdminCsv());
 
-  ["adminFrom","adminTo","adminClinic"].forEach(id => {
+  ["adminFrom","adminTo","adminClinic","adminProvider"].forEach(id => {
     $(id)?.addEventListener("change", () => loadAdminReport());
     $(id)?.addEventListener("input", () => loadAdminReport());
   });
@@ -785,10 +887,8 @@ function initButtons(){
   initButtons();
   loadSampleFeeSchedule();
   recalcAll();
-
   hydrateUserUI();
 
-  // default history range: last 7 days
   if ($("historyFrom") && $("historyTo")){
     const d = new Date();
     const from = new Date(d);
@@ -798,7 +898,6 @@ function initButtons(){
     loadQuoteHistory();
   }
 
-  // admin defaults
   if ($("adminFrom") && $("adminTo")){
     setAdminRangeThisWeek();
     loadAdminReport();
