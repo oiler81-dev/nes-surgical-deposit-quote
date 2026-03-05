@@ -6,8 +6,12 @@
       "direction": "in",
       "name": "req",
       "methods": ["get"],
-      "route": "adminReport"
+      "route": "admin-report"
     },
-    { "type": "http", "direction": "out", "name": "res" }
+    {
+      "type": "http",
+      "direction": "out",
+      "name": "res"
+    }
   ]
 }
