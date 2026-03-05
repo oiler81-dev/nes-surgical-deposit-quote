@@ -36,7 +36,7 @@ html,body{
 .brand__logo{width:56px;height:56px;object-fit:contain}
 .brand__title{font-weight:800}
 .brand__sub{color:var(--muted2);font-size:12px;margin-top:2px}
-.topbar__actions{display:flex;gap:10px;align-items:center}
+.topbar__actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
 .layout{display:flex;flex-direction:column;gap:16px;margin-top:16px}
 
@@ -47,7 +47,7 @@ html,body{
   padding:16px;
   box-shadow:var(--shadow);
 }
-.card__header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.card__header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap}
 .card__header h2{margin:0;font-size:16px;color:var(--navy);font-weight:800}
 
 .grid{display:grid;gap:12px}
@@ -81,11 +81,12 @@ html,body{
   cursor:pointer;
 }
 .btn--ghost{background:transparent;border:1px solid var(--line);color:var(--navy)}
+.btn:hover{filter:brightness(1.02)}
 
 .link{color:var(--navy);text-decoration:none;font-size:13px;font-weight:700}
 .link:hover{text-decoration:underline}
 
-.pillRow{display:flex;gap:10px;flex-wrap:wrap}
+.pillRow{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .pill{
   border:1px solid var(--line);
   border-radius:999px;
@@ -110,7 +111,7 @@ html,body{
   min-width:900px;
   background:#fff;
 }
-.table th,.table td{padding:10px;border-bottom:1px solid var(--line)}
+.table th,.table td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
 .table th{background:#f3f6fb;color:var(--muted);font-size:12px;font-weight:800;text-align:left}
 .table td{font-size:13px}
 .table .num{text-align:right;white-space:nowrap}
@@ -137,7 +138,7 @@ html,body{
 .footer{padding:18px 16px 40px}
 .muted{color:var(--muted2);font-size:12px}
 
-/* Print section */
+/* Printable Quote bits */
 .printHeader{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
 .printHeader__left{display:flex;gap:12px;align-items:flex-start}
 .printLogo{width:150px;height:auto;object-fit:contain}
@@ -153,43 +154,18 @@ html,body{
 .printBig__value{font-weight:900;font-size:22px;margin-top:4px;color:var(--navy)}
 
 .printSectionTitle{margin:14px 0 8px;font-size:14px;color:var(--navy);font-weight:900}
-
 .breakdown{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
 .breakdown__row{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);font-weight:700}
 .breakdown__row:last-child{border-bottom:none}
 .breakdown__row--bold{font-weight:900}
 
-/* Print table wrapper that never scrolls */
-.printTableWrap{
-  border:1px solid var(--line);
-  border-radius:12px;
-  overflow:hidden;
-  background:#fff;
-}
-.printTable{
-  width:100%;
-  border-collapse:collapse;
-  table-layout:fixed;
-}
-.printTable th, .printTable td{
-  padding:10px;
-  border-bottom:1px solid var(--line);
-  vertical-align:top;
-  font-size:12px;
-}
-.printTable th{
-  background:#f3f6fb;
-  color:var(--muted);
-  font-weight:900;
-  text-align:left;
-}
+.printTableWrap{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+.printTable{width:100%;border-collapse:collapse;table-layout:fixed}
+.printTable th, .printTable td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top;font-size:12px}
+.printTable th{background:#f3f6fb;color:var(--muted);font-weight:900;text-align:left}
 .printTable .num{text-align:right;white-space:nowrap}
-.printTable td:nth-child(2){
-  word-wrap:break-word;
-  overflow-wrap:anywhere;
-}
+.printTable td:nth-child(2){word-wrap:break-word;overflow-wrap:anywhere}
 
-/* NEW: footer disclaimer (bottom of printout) */
 .printFooterDisclaimer{
   margin-top:12px;
   padding-top:10px;
@@ -199,56 +175,10 @@ html,body{
   line-height:1.35;
 }
 
-/* PRINT: make it a document + keep it 1 page */
-@page{
-  size: Letter;
-  margin: 0.65in;
-}
+@page{ size: Letter; margin: 0.65in; }
 @media print{
   html,body{background:#fff !important;color:#000 !important}
   .topbar,.footer,.card:not(#printQuote){display:none !important}
-  #printQuote{
-    display:block !important;
-    background:#fff !important;
-    border:none !important;
-    box-shadow:none !important;
-    border-radius:0 !important;
-    padding:0 !important;
-    margin:0 !important;
-  }
-
+  #printQuote{border:none !important;box-shadow:none !important;border-radius:0 !important;padding:0 !important;margin:0 !important}
   .tableWrap{display:none !important}
-
-  .printHeader{border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:10px}
-  .printTitle{color:#000 !important;font-size:20px !important}
-  .printDisclaimer,.printMeta{color:#000 !important;opacity:.85 !important}
-
-  .printBig{border:1px solid #000 !important;border-radius:0 !important}
-  .printBig__label,.printBig__value{color:#000 !important}
-
-  .printTableWrap{border:1px solid #000 !important;border-radius:0 !important}
-  .printTable th{background:#f2f2f2 !important;color:#000 !important;border-bottom:1px solid #000 !important}
-  .printTable td{color:#000 !important}
-
-  .breakdown{border:1px solid #000 !important;border-radius:0 !important}
-  .breakdown__row{border-bottom:1px solid #ddd !important;color:#000 !important}
-
-  .printFooterDisclaimer{
-    border-top:1px solid #000 !important;
-    color:#000 !important;
-    opacity:.85 !important;
-  }
-
-  /* Try to keep it one page */
-  #printQuote{
-    font-size: 12px;
-  }
-  .printBig__value{font-size:20px !important}
-  .breakdown__row{padding:8px 10px !important}
-  .printTable th, .printTable td{padding:8px 10px !important}
-
-  .printHeader,.printGrid,.printTableWrap,.breakdown{
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
 }
