@@ -11,7 +11,7 @@
     .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px}
     .grow{flex:1}
     label{display:block;font-size:12px;color:#374151;margin-bottom:6px}
-    input,select{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:10px}
+    input{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:10px}
     button{padding:10px 12px;border:1px solid #111827;border-radius:10px;background:#111827;color:#fff;cursor:pointer}
     button.secondary{background:#fff;color:#111827}
     table{width:100%;border-collapse:collapse}
@@ -99,9 +99,7 @@
     async function fetchText(url){
       const res = await fetch(url, { cache: "no-store" });
       const text = await res.text();
-      if (!res.ok) {
-        throw new Error("HTTP " + res.status + ":\n" + text);
-      }
+      if (!res.ok) throw new Error("HTTP " + res.status + ":\n" + text);
       return text;
     }
 
@@ -119,7 +117,8 @@
       if (clinic) qs.set("clinic", clinic);
       if (provider) qs.set("provider", provider);
 
-      const url = "/api/admin-report" + (qs.toString() ? ("?" + qs.toString()) : "");
+      // ✅ This now matches your SWA config: /api/reports/*
+      const url = "/api/reports/admin-report" + (qs.toString() ? ("?" + qs.toString()) : "");
       const text = await fetchText(url);
       const data = JSON.parse(text);
 
@@ -140,7 +139,6 @@
         tbody.appendChild(tr);
       });
 
-      // store last export items in memory for CSV export button
       window.__exportItems = data.exportItems || [];
     }
 
@@ -166,16 +164,13 @@
     document.getElementById("refreshBtn").addEventListener("click", async () => {
       try { await loadReport(); } catch(e){ showError(e.message || String(e)); }
     });
-
     document.getElementById("exportBtn").addEventListener("click", () => {
       try { exportCsv(); } catch(e){ showError(e.message || String(e)); }
     });
-
     document.getElementById("logoutBtn").addEventListener("click", () => {
       window.location.href = "/.auth/logout";
     });
 
-    // Default date range: today -> today
     (function init(){
       const now = new Date();
       const y = now.getFullYear();
