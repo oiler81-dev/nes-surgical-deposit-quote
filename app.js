@@ -1,47 +1,510 @@
-async function fetchJsonOrThrow(url, options = {}) {
-  const res = await fetch(url, { cache: "no-store", ...options });
+// -------------------- utilities --------------------
+function $(id){ return document.getElementById(id); }
+
+function money(n){
+  const v = Number(n || 0);
+  return v.toLocaleString(undefined, { style:"currency", currency:"USD" });
+}
+
+function toYmdLocal(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,"0");
+  const day = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+
+function startOfWeek(d){
+  const x = new Date(d);
+  const day = x.getDay(); // 0=Sun
+  const diff = (day === 0 ? -6 : 1 - day);
+  x.setDate(x.getDate() + diff);
+  x.setHours(0,0,0,0);
+  return x;
+}
+
+async function fetchText(url, options={}){
+  const res = await fetch(url, { cache:"no-store", ...options });
   const text = await res.text();
-  if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}\n${text}`);
-  try { return JSON.parse(text); } catch { throw new Error(`Bad JSON from ${url}\n${text}`); }
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${url}\n${text}`);
+  return text;
 }
 
-function getVal(id) {
-  const el = document.getElementById(id);
-  return el ? el.value : "";
+async function fetchJson(url, options={}){
+  const text = await fetchText(url, options);
+  try { return JSON.parse(text); }
+  catch { throw new Error(`Bad JSON from ${url}\n${text}`); }
 }
 
-async function saveQuote() {
-  const payload = {
-    patientName: getVal("patientName"),
-    clinic: getVal("clinic"),
-    provider: getVal("provider"),
-    totals: {
-      recommendedDeposit: Number(getVal("recommendedDeposit") || 0),
-      estimatedOwes: Number(getVal("estimatedOwes") || 0)
+function showQhError(msg){
+  const el = $("qhError");
+  if (!el) return;
+  el.style.display = "block";
+  el.textContent = msg;
+}
+function clearQhError(){
+  const el = $("qhError");
+  if (!el) return;
+  el.style.display = "none";
+  el.textContent = "";
+}
+
+function downloadCsv(filename, headers, rows){
+  const escape = (v) => {
+    const s = String(v ?? "");
+    if (s.includes('"') || s.includes(",") || s.includes("\n")) return '"' + s.replaceAll('"','""') + '"';
+    return s;
+  };
+  const csv = [headers.join(",")]
+    .concat(rows.map(r => headers.map(h => escape(r[h])).join(",")))
+    .join("\n");
+
+  const blob = new Blob([csv], { type:"text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+// -------------------- auth: user + roles --------------------
+let CURRENT_USER = null;
+
+async function loadAuth(){
+  // SWA auth endpoint
+  const data = await fetchJson("/.auth/me");
+  const principal = data?.clientPrincipal || null;
+  CURRENT_USER = principal;
+
+  // Prepared By default
+  const preparedBy = $("preparedBy");
+  if (preparedBy && principal){
+    // prefer userDetails (email) but fall back to name
+    preparedBy.value = principal.userDetails || principal.userId || "";
+  }
+
+  // Admin button if role exists
+  const roles = principal?.userRoles || [];
+  const isAdmin = roles.includes("admin");
+
+  const adminBtn = $("adminBtn");
+  if (adminBtn){
+    adminBtn.style.display = isAdmin ? "inline-flex" : "none";
+    adminBtn.onclick = () => window.location.href = "/admin.html";
+  }
+}
+
+// -------------------- fee schedule + procedures --------------------
+let FEE_MAP = new Map(); // CPT -> { cpt, desc, allowed }
+let PROCEDURES = [];     // { cpt, desc, qty, allowed, adjPct, adjAllowed, lineTotal }
+
+function parseCsv(text){
+  // very small CSV parser; handles quotes, commas
+  const rows = [];
+  let i=0, field="", row=[], inQuotes=false;
+
+  while (i < text.length){
+    const c = text[i];
+
+    if (inQuotes){
+      if (c === '"'){
+        if (text[i+1] === '"'){ field += '"'; i += 2; continue; }
+        inQuotes = false; i++; continue;
+      }
+      field += c; i++; continue;
+    } else {
+      if (c === '"'){ inQuotes = true; i++; continue; }
+      if (c === ","){ row.push(field); field=""; i++; continue; }
+      if (c === "\n"){
+        row.push(field); field="";
+        rows.push(row); row=[];
+        i++; continue;
+      }
+      if (c === "\r"){ i++; continue; }
+      field += c; i++; continue;
     }
-    // include your other fields here as needed
+  }
+  row.push(field);
+  rows.push(row);
+  return rows;
+}
+
+function normalizeHeader(h){
+  return String(h||"").trim().toLowerCase().replaceAll(" ", "");
+}
+
+function loadFeeScheduleFromCsv(csvText){
+  const rows = parseCsv(csvText);
+  if (!rows.length) throw new Error("CSV is empty");
+
+  const header = rows[0].map(normalizeHeader);
+  const idxCpt = header.findIndex(h => h === "cpt");
+  const idxDesc = header.findIndex(h => h === "description" || h === "desc");
+  const idxAllowed = header.findIndex(h => ["allowed","allowedamount","allowable"].includes(h));
+
+  if (idxCpt < 0 || idxAllowed < 0){
+    throw new Error("CSV missing required columns. Need CPT and Allowed/AllowedAmount/Allowable.");
+  }
+
+  const map = new Map();
+  for (let r=1; r<rows.length; r++){
+    const line = rows[r];
+    const cpt = String(line[idxCpt] || "").trim();
+    if (!cpt) continue;
+
+    const desc = idxDesc >= 0 ? String(line[idxDesc] || "").trim() : "";
+    const allowedRaw = String(line[idxAllowed] || "").trim().replaceAll("$","");
+    const allowed = Number(allowedRaw || 0);
+
+    if (!Number.isFinite(allowed)) continue;
+    map.set(cpt, { cpt, desc, allowed });
+  }
+
+  FEE_MAP = map;
+}
+
+function renderFeePreview(){
+  const tbody = $("feePreviewTbody");
+  if (!tbody) return;
+
+  tbody.innerHTML = "";
+  const arr = Array.from(FEE_MAP.values()).slice(0, 100);
+
+  if (!arr.length){
+    tbody.innerHTML = `<tr><td colspan="3" class="muted">No data yet.</td></tr>`;
+    return;
+  }
+
+  for (const x of arr){
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${x.cpt}</td>
+      <td>${x.desc || ""}</td>
+      <td class="right">${money(x.allowed)}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+function renderProcedures(){
+  const tbody = $("procTbody");
+  if (!tbody) return;
+
+  tbody.innerHTML = "";
+
+  if (!PROCEDURES.length){
+    tbody.innerHTML = `<tr><td colspan="8" class="muted">No procedures yet.</td></tr>`;
+    return;
+  }
+
+  PROCEDURES.forEach((p, idx) => {
+    const tr = document.createElement("tr");
+
+    tr.innerHTML = `
+      <td><input data-field="cpt" data-idx="${idx}" value="${p.cpt || ""}" placeholder="e.g. 27447"/></td>
+      <td><input data-field="desc" data-idx="${idx}" value="${p.desc || ""}" placeholder="Auto from fee schedule"/></td>
+      <td><input data-field="qty" data-idx="${idx}" type="number" min="1" step="1" value="${p.qty || 1}"/></td>
+      <td class="right">${money(p.allowed || 0)}</td>
+      <td class="right">${Math.round((p.adjPct || 1) * 100)}%</td>
+      <td class="right">${money(p.adjAllowed || 0)}</td>
+      <td class="right">${money(p.lineTotal || 0)}</td>
+      <td class="right"><button class="btn secondary" data-del="${idx}">Remove</button></td>
+    `;
+
+    tbody.appendChild(tr);
+  });
+
+  // wire input changes
+  tbody.querySelectorAll("input[data-field]").forEach(inp => {
+    inp.addEventListener("input", () => {
+      const idx = parseInt(inp.getAttribute("data-idx"), 10);
+      const field = inp.getAttribute("data-field");
+      let val = inp.value;
+
+      if (field === "qty") val = Math.max(1, parseInt(val || "1", 10) || 1);
+      PROCEDURES[idx][field] = val;
+
+      // if CPT changes, pull from fee map
+      if (field === "cpt"){
+        const hit = FEE_MAP.get(String(val).trim());
+        if (hit){
+          PROCEDURES[idx].desc = hit.desc || PROCEDURES[idx].desc || "";
+          PROCEDURES[idx].allowed = Number(hit.allowed || 0);
+        } else {
+          PROCEDURES[idx].allowed = 0;
+        }
+      }
+      recalcAll();
+      renderProcedures(); // keeps table consistent
+    });
+  });
+
+  // wire remove buttons
+  tbody.querySelectorAll("button[data-del]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.getAttribute("data-del"), 10);
+      PROCEDURES.splice(idx, 1);
+      recalcAll();
+      renderProcedures();
+    });
+  });
+}
+
+function computeMultiProcAdjPct(orderIndex){
+  // Example: first = 100%, others = 50%
+  // You can adjust this logic later.
+  return orderIndex === 0 ? 1.0 : 0.5;
+}
+
+function recalcAll(){
+  // 1) Update allowed/desc from fee schedule when possible
+  for (const p of PROCEDURES){
+    const hit = FEE_MAP.get(String(p.cpt||"").trim());
+    if (hit){
+      p.allowed = Number(hit.allowed || 0);
+      if (!p.desc) p.desc = hit.desc || "";
+    } else {
+      p.allowed = Number(p.allowed || 0) || 0;
+    }
+    p.qty = Math.max(1, parseInt(p.qty || "1", 10) || 1);
+  }
+
+  // 2) Apply multi-procedure adjustment based on highest allowed first
+  const sorted = PROCEDURES
+    .map((p,i)=>({p,i}))
+    .sort((a,b)=> (b.p.allowed||0) - (a.p.allowed||0));
+
+  sorted.forEach((x, orderIndex) => {
+    const pct = computeMultiProcAdjPct(orderIndex);
+    x.p.adjPct = pct;
+    x.p.adjAllowed = (x.p.allowed || 0) * pct;
+    x.p.lineTotal = x.p.adjAllowed * (x.p.qty || 1);
+  });
+
+  // 3) Totals
+  const totalAllowed = PROCEDURES.reduce((sum,p)=> sum + (p.lineTotal||0), 0);
+
+  const copay = Number($("copay")?.value || 0);
+  let dedRemaining = Number($("deductibleRemaining")?.value || 0);
+  const coinsPct = Number($("coinsurancePct")?.value || 0);
+  const oopRemaining = Number($("oopMaxRemaining")?.value || 0);
+
+  const dedApplied = Math.min(dedRemaining, totalAllowed);
+  const afterDed = Math.max(0, totalAllowed - dedApplied);
+
+  const coinsuranceAmt = afterDed * coinsPct;
+
+  let due = copay + dedApplied + coinsuranceAmt;
+  if (oopRemaining > 0) due = Math.min(due, oopRemaining);
+
+  // deposit rule: for now use due (you can change later)
+  const recommendedDeposit = due;
+
+  $("kTotalAllowed").textContent = money(totalAllowed);
+  $("kDedApplied").textContent = money(dedApplied);
+  $("kCoinsurance").textContent = money(coinsuranceAmt);
+  $("kCopay").textContent = money(copay);
+  $("kDue").textContent = money(due);
+  $("kDeposit").textContent = money(recommendedDeposit);
+
+  // stash totals for save payload
+  window.__QUOTE_TOTALS = {
+    totalAllowed,
+    deductibleApplied: dedApplied,
+    coinsuranceAmount: coinsuranceAmt,
+    copay,
+    estimatedOwes: due,
+    recommendedDeposit
+  };
+}
+
+// -------------------- quote save + history --------------------
+async function saveQuote(){
+  const payload = {
+    patientName: $("patientName")?.value || "",
+    insurancePlan: $("insurancePlan")?.value || "",
+    preparedBy: $("preparedBy")?.value || "",
+    clinic: $("clinic")?.value || "",
+    provider: $("provider")?.value || "",
+    copay: Number($("copay")?.value || 0),
+    deductibleRemaining: Number($("deductibleRemaining")?.value || 0),
+    coinsurancePct: Number($("coinsurancePct")?.value || 0),
+    oopMaxRemaining: Number($("oopMaxRemaining")?.value || 0),
+    procedures: PROCEDURES,
+    totals: window.__QUOTE_TOTALS || {}
   };
 
-  const data = await fetchJsonOrThrow("/api/quotes", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  const res = await fetchJson("/api/quotes", {
+    method:"POST",
+    headers: { "Content-Type":"application/json" },
     body: JSON.stringify(payload)
   });
 
-  if (!data.ok) throw new Error(data.error || "Save failed");
-  alert(`Saved. QuoteId: ${data.quoteId}`);
+  if (!res.ok) throw new Error(res.error || "Save failed");
+  return res;
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  const btn = document.getElementById("saveQuoteBtn");
-  if (btn) {
-    btn.addEventListener("click", async () => {
-      try {
-        await saveQuote();
-      } catch (e) {
-        console.error(e);
-        alert(e.message || String(e));
-      }
-    });
+let QH_ITEMS = [];
+
+function renderQuoteHistory(items){
+  const tbody = $("qhTbody");
+  if (!tbody) return;
+
+  tbody.innerHTML = "";
+  if (!items || !items.length){
+    tbody.innerHTML = `<tr><td colspan="8" class="muted">No data yet.</td></tr>`;
+    return;
+  }
+
+  for (const x of items){
+    const tr = document.createElement("tr");
+    const openUrl = x.quoteId ? `/index.html?quoteId=${encodeURIComponent(x.quoteId)}` : "#";
+    tr.innerHTML = `
+      <td>${x.createdAtLocal || x.createdAt || ""}</td>
+      <td>${x.patientName || ""}</td>
+      <td>${x.provider || ""}</td>
+      <td>${x.clinic || ""}</td>
+      <td>${x.createdBy || ""}</td>
+      <td class="right">${money(x.recommendedDeposit || 0)}</td>
+      <td class="right">${money(x.estimatedOwes || 0)}</td>
+      <td><a href="${openUrl}">Open</a></td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+async function loadQuoteHistory(){
+  clearQhError();
+
+  const from = $("qhFrom")?.value || "";
+  const to = $("qhTo")?.value || "";
+  const take = Math.max(1, Math.min(parseInt($("qhTake")?.value || "50", 10) || 50, 200));
+
+  const q = $("qhSearch")?.value?.trim() || "";
+  const staff = $("qhStaff")?.value?.trim() || "";
+  const clinic = $("qhClinic")?.value?.trim() || "";
+  const provider = $("qhProvider")?.value?.trim() || "";
+
+  const qs = new URLSearchParams();
+  if (from) qs.set("from", from);
+  if (to) qs.set("to", to);
+  qs.set("take", String(take));
+  if (q) qs.set("q", q);
+  if (staff) qs.set("staff", staff);
+  if (clinic) qs.set("clinic", clinic);
+  if (provider) qs.set("provider", provider);
+
+  const data = await fetchJson("/api/quotes?" + qs.toString());
+
+  if (!data || data.ok !== true || !Array.isArray(data.items)){
+    throw new Error("Unexpected response from /api/quotes\n" + JSON.stringify(data, null, 2));
+  }
+
+  QH_ITEMS = data.items;
+  renderQuoteHistory(QH_ITEMS);
+}
+
+function exportQuoteHistory(){
+  const headers = [
+    "createdAt","createdAtLocal","patientName","provider","clinic","createdBy",
+    "recommendedDeposit","estimatedOwes","quoteId","partitionKey","rowKey"
+  ];
+  downloadCsv("quote-history.csv", headers, QH_ITEMS || []);
+}
+
+// -------------------- init + events --------------------
+document.addEventListener("DOMContentLoaded", async () => {
+  // buttons
+  $("logoutBtn").onclick = () => window.location.href = "/.auth/logout";
+
+  $("addProcBtn").onclick = () => {
+    PROCEDURES.push({ cpt:"", desc:"", qty:1, allowed:0, adjPct:1, adjAllowed:0, lineTotal:0 });
+    recalcAll();
+    renderProcedures();
+  };
+
+  $("resetBtn").onclick = () => {
+    PROCEDURES = [];
+    recalcAll();
+    renderProcedures();
+  };
+
+  $("saveQuoteBtn").onclick = async () => {
+    try{
+      const res = await saveQuote();
+      alert(`Saved quote ${res.quoteId}`);
+      await loadQuoteHistory();
+    } catch (e){
+      console.error(e);
+      alert(e.message || String(e));
+    }
+  };
+
+  $("qhRefreshBtn").onclick = async () => {
+    try { await loadQuoteHistory(); }
+    catch(e){
+      console.error(e);
+      showQhError(e.message || String(e));
+      $("qhTbody").innerHTML = `<tr><td colspan="8">Error: ${String(e.message || e)}</td></tr>`;
+    }
+  };
+
+  $("qhExportBtn").onclick = () => exportQuoteHistory();
+
+  $("qhTodayBtn").onclick = async () => {
+    const today = toYmdLocal(new Date());
+    $("qhFrom").value = today;
+    $("qhTo").value = today;
+    $("qhRefreshBtn").click();
+  };
+
+  $("qhWeekBtn").onclick = async () => {
+    const now = new Date();
+    const start = startOfWeek(now);
+    $("qhFrom").value = toYmdLocal(start);
+    $("qhTo").value = toYmdLocal(now);
+    $("qhRefreshBtn").click();
+  };
+
+  // recalc on input changes
+  ["copay","deductibleRemaining","coinsurancePct","oopMaxRemaining"].forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener("input", () => { recalcAll(); renderProcedures(); });
+  });
+
+  // fee schedule file upload
+  $("feeFile").addEventListener("change", async () => {
+    const file = $("feeFile").files?.[0];
+    if (!file) return;
+
+    try{
+      const text = await file.text();
+      loadFeeScheduleFromCsv(text);
+      $("feeLoadedText").textContent = `${FEE_MAP.size} CPTs loaded`;
+      renderFeePreview();
+      // If you already added procedures, refresh allowed values
+      recalcAll();
+      renderProcedures();
+    } catch(e){
+      console.error(e);
+      alert(e.message || String(e));
+    }
+  });
+
+  // defaults
+  const today = toYmdLocal(new Date());
+  $("qhFrom").value = today;
+  $("qhTo").value = today;
+
+  // init totals + table
+  recalcAll();
+  renderProcedures();
+
+  // load auth + history
+  try { await loadAuth(); }
+  catch(e){ console.error(e); }
+
+  try { await loadQuoteHistory(); }
+  catch(e){
+    console.error(e);
+    showQhError(e.message || String(e));
   }
 });
