@@ -67,6 +67,8 @@ function downloadCsv(filename, headers, rows){
 
 // -------------------- fee schedule persistence --------------------
 const LS_FEE_KEY = "nes_feeSchedule_csv_v1";
+const DEFAULT_FEE_URL = "/feeSchedule.sample.csv"; // ✅ auto-load fallback
+
 function saveFeeScheduleCsv(csvText){
   try { localStorage.setItem(LS_FEE_KEY, csvText); } catch {}
 }
@@ -166,6 +168,11 @@ function loadFeeScheduleFromCsv(csvText){
   }
 
   FEE_MAP = map;
+}
+
+function setFeeLoadedText(text){
+  const el = $("feeLoadedText");
+  if (el) el.textContent = text;
 }
 
 function renderFeePreview(){
@@ -282,13 +289,12 @@ function recalcAll(){
   const totalAllowed = PROCEDURES.reduce((sum,p)=> sum + (p.lineTotal||0), 0);
 
   const copay = Number($("copay")?.value || 0);
-  let dedRemaining = Number($("deductibleRemaining")?.value || 0);
+  const dedRemaining = Number($("deductibleRemaining")?.value || 0);
   const coinsPct = Number($("coinsurancePct")?.value || 0);
   const oopRemaining = Number($("oopMaxRemaining")?.value || 0);
 
   const dedApplied = Math.min(dedRemaining, totalAllowed);
   const afterDed = Math.max(0, totalAllowed - dedApplied);
-
   const coinsuranceAmt = afterDed * coinsPct;
 
   let due = copay + dedApplied + coinsuranceAmt;
@@ -353,7 +359,6 @@ function renderQuoteHistory(items){
 
   for (const x of items){
     const tr = document.createElement("tr");
-    const openUrl = x.quoteId ? `/index.html?quoteId=${encodeURIComponent(x.quoteId)}` : "#";
     tr.innerHTML = `
       <td>${x.createdAtLocal || x.createdAt || ""}</td>
       <td>${x.patientName || ""}</td>
@@ -362,7 +367,7 @@ function renderQuoteHistory(items){
       <td>${x.createdBy || ""}</td>
       <td class="right">${money(x.recommendedDeposit || 0)}</td>
       <td class="right">${money(x.estimatedOwes || 0)}</td>
-      <td><a href="${openUrl}">Open</a></td>
+      <td>${x.quoteId ? "✓" : ""}</td>
     `;
     tbody.appendChild(tr);
   }
@@ -405,6 +410,44 @@ function exportQuoteHistory(){
     "recommendedDeposit","estimatedOwes","quoteId","partitionKey","rowKey"
   ];
   downloadCsv("quote-history.csv", headers, QH_ITEMS || []);
+}
+
+// -------------------- fee schedule auto-load logic --------------------
+function applyFeeSchedule(csvText, label){
+  loadFeeScheduleFromCsv(csvText);
+  setFeeLoadedText(`${FEE_MAP.size} CPTs loaded${label ? " (" + label + ")" : ""}`);
+  renderFeePreview();
+  recalcAll();
+  renderProcedures();
+}
+
+async function autoLoadFeeSchedule(){
+  // 1) localStorage cache
+  const cached = loadFeeScheduleCsv();
+  if (cached){
+    try{
+      applyFeeSchedule(cached, "cached");
+      return;
+    } catch (e){
+      console.warn("Cached fee schedule failed to parse; clearing cache.", e);
+      clearFeeScheduleCsv();
+    }
+  }
+
+  // 2) fallback: fetch feeSchedule.sample.csv
+  try{
+    const sample = await fetchText(DEFAULT_FEE_URL);
+    applyFeeSchedule(sample, "sample");
+    // cache it so it persists
+    saveFeeScheduleCsv(sample);
+    return;
+  } catch (e){
+    console.warn("No sample fee schedule available.", e);
+  }
+
+  // 3) nothing
+  setFeeLoadedText("No fee schedule loaded");
+  renderFeePreview();
 }
 
 // -------------------- init + events --------------------
@@ -472,12 +515,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     try{
       const text = await file.text();
-      loadFeeScheduleFromCsv(text);
-      saveFeeScheduleCsv(text); // ✅ persist
-      $("feeLoadedText").textContent = `${FEE_MAP.size} CPTs loaded`;
-      renderFeePreview();
-      recalcAll();
-      renderProcedures();
+      applyFeeSchedule(text, "uploaded");
+      saveFeeScheduleCsv(text); // overwrite cache
     } catch(e){
       console.error(e);
       alert(e.message || String(e));
@@ -489,25 +528,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("qhFrom").value = today;
   $("qhTo").value = today;
 
-  // ✅ AUTO-LOAD fee schedule from localStorage (this is what you were missing)
-  try{
-    const cached = loadFeeScheduleCsv();
-    if (cached){
-      loadFeeScheduleFromCsv(cached);
-      $("feeLoadedText").textContent = `${FEE_MAP.size} CPTs loaded (cached)`;
-      renderFeePreview();
-    } else {
-      $("feeLoadedText").textContent = "No fee schedule loaded";
-    }
-  } catch(e){
-    console.error(e);
-    $("feeLoadedText").textContent = "No fee schedule loaded";
-  }
-
+  // init procedures + totals
   recalcAll();
   renderProcedures();
 
+  // ✅ load auth + fee schedule + history
   try { await loadAuth(); } catch(e){ console.error(e); }
+
+  try { await autoLoadFeeSchedule(); } catch(e){ console.error(e); }
 
   try { await loadQuoteHistory(); }
   catch(e){
