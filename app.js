@@ -1,545 +1,434 @@
-// -------------------- utilities --------------------
-function $(id){ return document.getElementById(id); }
+/* =========================
+   STATE + HELPERS
+   ========================= */
+
+const state = {
+  feeMap: new Map(),   // CPT -> { desc, fee }
+  rows: [],
+  maxRows: 10,
+  history: []
+};
+
+const $ = (id) => document.getElementById(id);
 
 function money(n){
-  const v = Number(n || 0);
-  return v.toLocaleString(undefined, { style:"currency", currency:"USD" });
+  const v = Number.isFinite(n) ? n : 0;
+  return v.toLocaleString(undefined, { style: "currency", currency: "USD" });
+}
+function num(n){
+  const v = Number.isFinite(n) ? n : 0;
+  return v;
+}
+function parseNumber(x){
+  const v = parseFloat(String(x ?? "").replace(/,/g,""));
+  return Number.isFinite(v) ? v : 0;
 }
 
-function toYmdLocal(d){
-  const y = d.getFullYear();
-  const m = String(d.getMonth()+1).padStart(2,"0");
-  const day = String(d.getDate()).padStart(2,"0");
-  return `${y}-${m}-${day}`;
-}
+/* =========================
+   PROVIDERS (dropdown options)
+   =========================
+   Replace this list with your exact provider names as you want them shown.
+*/
+const providers = [
+  "Select Provider",
+  "Dr. David L. Wood",
+  "Dr. Jason Snibbe",
+  "Dr. Jonathan Yun",
+  "Dr. Shawn Kato",
+  "Dr. Patrick Hsieh",
+  "Dr. Michael Stone",
+  "Dr. Daniel Allison",
+  "Dr. Brian Kim",
+  "Dr. Farshad M. Ahmadi",
+  "Dr. Sam Baksh",
+  "Dr. Joshua Hernandez"
+];
 
-function startOfWeek(d){
-  const x = new Date(d);
-  const day = x.getDay(); // 0=Sun
-  const diff = (day === 0 ? -6 : 1 - day);
-  x.setDate(x.getDate() + diff);
-  x.setHours(0,0,0,0);
-  return x;
-}
+/* =========================
+   CPT FEES (dropdown options)
+   =========================
+   Replace/add CPT codes, descriptions, and fees here.
+   CPT dropdown is built from this.
+*/
+const cptFeeList = [
+  { cpt: "99213", desc: "Office/outpatient visit est patient", fee: 150 },
+  { cpt: "99214", desc: "Office/outpatient visit est patient (complex)", fee: 220 },
+  { cpt: "20610", desc: "Arthrocentesis/injection, major joint", fee: 180 },
+  { cpt: "20611", desc: "Arthrocentesis/injection w/ US guidance", fee: 260 },
+  { cpt: "29881", desc: "Knee arthroscopy w/ meniscectomy", fee: 3200 },
+  { cpt: "27447", desc: "Total knee arthroplasty", fee: 14500 }
+];
 
-async function fetchText(url, options={}){
-  const res = await fetch(url, { cache:"no-store", ...options });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`HTTP ${res.status} ${url}\n${text}`);
-  return text;
-}
+/* =========================
+   INIT
+   ========================= */
 
-async function fetchJson(url, options={}){
-  const text = await fetchText(url, options);
-  try { return JSON.parse(text); }
-  catch { throw new Error(`Bad JSON from ${url}\n${text}`); }
-}
-
-function showQhError(msg){
-  const el = $("qhError");
-  if (!el) return;
-  el.style.display = "block";
-  el.textContent = msg;
-}
-function clearQhError(){
-  const el = $("qhError");
-  if (!el) return;
-  el.style.display = "none";
-  el.textContent = "";
-}
-
-function downloadCsv(filename, headers, rows){
-  const escape = (v) => {
-    const s = String(v ?? "");
-    if (s.includes('"') || s.includes(",") || s.includes("\n")) return '"' + s.replaceAll('"','""') + '"';
-    return s;
-  };
-  const csv = [headers.join(",")]
-    .concat(rows.map(r => headers.map(h => escape(r[h])).join(",")))
-    .join("\n");
-
-  const blob = new Blob([csv], { type:"text/csv;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-}
-
-// -------------------- fee schedule persistence --------------------
-const LS_FEE_KEY = "nes_feeSchedule_csv_v1";
-const DEFAULT_FEE_URL = "/feeSchedule.sample.csv"; // ✅ auto-load fallback
-
-function saveFeeScheduleCsv(csvText){
-  try { localStorage.setItem(LS_FEE_KEY, csvText); } catch {}
-}
-function loadFeeScheduleCsv(){
-  try { return localStorage.getItem(LS_FEE_KEY) || ""; } catch { return ""; }
-}
-function clearFeeScheduleCsv(){
-  try { localStorage.removeItem(LS_FEE_KEY); } catch {}
-}
-
-// -------------------- auth: user + roles --------------------
-let CURRENT_USER = null;
-
-async function loadAuth(){
-  const data = await fetchJson("/.auth/me");
-  const principal = data?.clientPrincipal || null;
-  CURRENT_USER = principal;
-
-  const preparedBy = $("preparedBy");
-  if (preparedBy && principal){
-    preparedBy.value = principal.userDetails || principal.userId || "";
+function init(){
+  // Load CPT fee list into feeMap
+  state.feeMap.clear();
+  for (const item of cptFeeList){
+    state.feeMap.set(item.cpt, { desc: item.desc, fee: item.fee });
   }
 
-  const roles = principal?.userRoles || [];
-  const isAdmin = roles.includes("admin");
+  // Date default
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth()+1).padStart(2,"0");
+  const dd = String(today.getDate()).padStart(2,"0");
+  $("quoteDate").value = `${yyyy}-${mm}-${dd}`;
 
-  const adminBtn = $("adminBtn");
-  if (adminBtn){
-    adminBtn.style.display = isAdmin ? "inline-flex" : "none";
-    adminBtn.onclick = () => window.location.href = "/admin.html";
-  }
-}
+  // History
+  state.history = loadHistory();
+  renderHistory();
 
-// -------------------- fee schedule + procedures --------------------
-let FEE_MAP = new Map(); // CPT -> { cpt, desc, allowed }
-let PROCEDURES = [];     // { cpt, desc, qty, allowed, adjPct, adjAllowed, lineTotal }
+  // Start with 3 rows
+  for (let i=0; i<3; i++) addRow();
 
-function parseCsv(text){
-  const rows = [];
-  let i=0, field="", row=[], inQuotes=false;
-
-  while (i < text.length){
-    const c = text[i];
-
-    if (inQuotes){
-      if (c === '"'){
-        if (text[i+1] === '"'){ field += '"'; i += 2; continue; }
-        inQuotes = false; i++; continue;
-      }
-      field += c; i++; continue;
-    } else {
-      if (c === '"'){ inQuotes = true; i++; continue; }
-      if (c === ","){ row.push(field); field=""; i++; continue; }
-      if (c === "\n"){
-        row.push(field); field="";
-        rows.push(row); row=[];
-        i++; continue;
-      }
-      if (c === "\r"){ i++; continue; }
-      field += c; i++; continue;
-    }
-  }
-  row.push(field);
-  rows.push(row);
-  return rows;
-}
-
-function normalizeHeader(h){
-  return String(h||"").trim().toLowerCase().replaceAll(" ", "");
-}
-
-function loadFeeScheduleFromCsv(csvText){
-  const rows = parseCsv(csvText);
-  if (!rows.length) throw new Error("CSV is empty");
-
-  const header = rows[0].map(normalizeHeader);
-  const idxCpt = header.findIndex(h => h === "cpt");
-  const idxDesc = header.findIndex(h => h === "description" || h === "desc");
-  const idxAllowed = header.findIndex(h => ["allowed","allowedamount","allowable"].includes(h));
-
-  if (idxCpt < 0 || idxAllowed < 0){
-    throw new Error("CSV missing required columns. Need CPT and Allowed/AllowedAmount/Allowable.");
-  }
-
-  const map = new Map();
-  for (let r=1; r<rows.length; r++){
-    const line = rows[r];
-    const cpt = String(line[idxCpt] || "").trim();
-    if (!cpt) continue;
-
-    const desc = idxDesc >= 0 ? String(line[idxDesc] || "").trim() : "";
-    const allowedRaw = String(line[idxAllowed] || "").trim().replaceAll("$","");
-    const allowed = Number(allowedRaw || 0);
-
-    if (!Number.isFinite(allowed)) continue;
-    map.set(cpt, { cpt, desc, allowed });
-  }
-
-  FEE_MAP = map;
-}
-
-function setFeeLoadedText(text){
-  const el = $("feeLoadedText");
-  if (el) el.textContent = text;
-}
-
-function renderFeePreview(){
-  const tbody = $("feePreviewTbody");
-  if (!tbody) return;
-
-  tbody.innerHTML = "";
-  const arr = Array.from(FEE_MAP.values()).slice(0, 100);
-
-  if (!arr.length){
-    tbody.innerHTML = `<tr><td colspan="3" class="muted">No data yet.</td></tr>`;
-    return;
-  }
-
-  for (const x of arr){
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${x.cpt}</td>
-      <td>${x.desc || ""}</td>
-      <td class="right">${money(x.allowed)}</td>
-    `;
-    tbody.appendChild(tr);
-  }
-}
-
-function renderProcedures(){
-  const tbody = $("procTbody");
-  if (!tbody) return;
-
-  tbody.innerHTML = "";
-
-  if (!PROCEDURES.length){
-    tbody.innerHTML = `<tr><td colspan="8" class="muted">No procedures yet.</td></tr>`;
-    return;
-  }
-
-  PROCEDURES.forEach((p, idx) => {
-    const tr = document.createElement("tr");
-
-    tr.innerHTML = `
-      <td><input data-field="cpt" data-idx="${idx}" value="${p.cpt || ""}" placeholder="e.g. 27447"/></td>
-      <td><input data-field="desc" data-idx="${idx}" value="${p.desc || ""}" placeholder="Auto from fee schedule"/></td>
-      <td><input data-field="qty" data-idx="${idx}" type="number" min="1" step="1" value="${p.qty || 1}"/></td>
-      <td class="right">${money(p.allowed || 0)}</td>
-      <td class="right">${Math.round((p.adjPct || 1) * 100)}%</td>
-      <td class="right">${money(p.adjAllowed || 0)}</td>
-      <td class="right">${money(p.lineTotal || 0)}</td>
-      <td class="right"><button class="btn secondary" data-del="${idx}">Remove</button></td>
-    `;
-
-    tbody.appendChild(tr);
+  // Wire buttons
+  $("addRowBtn").addEventListener("click", addRow);
+  $("clearBtn").addEventListener("click", clearQuote);
+  $("saveQuoteBtn").addEventListener("click", saveQuote);
+  $("exportHistoryBtn").addEventListener("click", exportHistoryCSV);
+  $("clearHistoryBtn").addEventListener("click", () => {
+    if (!confirm("Clear quote history?")) return;
+    localStorage.removeItem("estimate_history_v1");
+    state.history = [];
+    renderHistory();
   });
 
-  tbody.querySelectorAll("input[data-field]").forEach(inp => {
-    inp.addEventListener("input", () => {
-      const idx = parseInt(inp.getAttribute("data-idx"), 10);
-      const field = inp.getAttribute("data-field");
-      let val = inp.value;
+  recalcTotals();
+}
 
-      if (field === "qty") val = Math.max(1, parseInt(val || "1", 10) || 1);
-      PROCEDURES[idx][field] = val;
+document.addEventListener("DOMContentLoaded", init);
 
-      if (field === "cpt"){
-        const hit = FEE_MAP.get(String(val).trim());
-        if (hit){
-          PROCEDURES[idx].desc = hit.desc || PROCEDURES[idx].desc || "";
-          PROCEDURES[idx].allowed = Number(hit.allowed || 0);
-        } else {
-          PROCEDURES[idx].allowed = 0;
-        }
-      }
-      recalcAll();
-      renderProcedures();
+/* =========================
+   ROWS
+   ========================= */
+
+function addRow(){
+  if (state.rows.length >= state.maxRows) return;
+
+  const row = {
+    id: crypto.randomUUID(),
+    provider: "",
+    cpt: "",
+    desc: "",
+    fee: 0,
+    qty: 1
+  };
+  state.rows.push(row);
+  renderRows();
+  recalcTotals();
+}
+
+function removeRow(id){
+  state.rows = state.rows.filter(r => r.id !== id);
+  renderRows();
+  recalcTotals();
+}
+
+function renderRows(){
+  const tbody = $("rowsTbody");
+  tbody.innerHTML = "";
+
+  for (const r of state.rows){
+    const tr = document.createElement("tr");
+
+    // Provider select
+    const tdProvider = document.createElement("td");
+    const providerSelect = document.createElement("select");
+    providerSelect.className = "providerSelect";
+    providers.forEach((p, idx) => {
+      const opt = document.createElement("option");
+      opt.value = idx === 0 ? "" : p;
+      opt.textContent = p;
+      providerSelect.appendChild(opt);
     });
-  });
-
-  tbody.querySelectorAll("button[data-del]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const idx = parseInt(btn.getAttribute("data-del"), 10);
-      PROCEDURES.splice(idx, 1);
-      recalcAll();
-      renderProcedures();
+    providerSelect.value = r.provider || "";
+    providerSelect.addEventListener("change", () => {
+      r.provider = providerSelect.value;
+      // no totals impact
     });
-  });
-}
+    tdProvider.appendChild(providerSelect);
+    tr.appendChild(tdProvider);
 
-function computeMultiProcAdjPct(orderIndex){
-  return orderIndex === 0 ? 1.0 : 0.5;
-}
+    // CPT select
+    const tdCpt = document.createElement("td");
+    const cptSelect = document.createElement("select");
+    cptSelect.className = "cptSelect";
 
-function recalcAll(){
-  for (const p of PROCEDURES){
-    const hit = FEE_MAP.get(String(p.cpt||"").trim());
-    if (hit){
-      p.allowed = Number(hit.allowed || 0);
-      if (!p.desc) p.desc = hit.desc || "";
-    } else {
-      p.allowed = Number(p.allowed || 0) || 0;
-    }
-    p.qty = Math.max(1, parseInt(p.qty || "1", 10) || 1);
-  }
+    const first = document.createElement("option");
+    first.value = "";
+    first.textContent = "Select CPT";
+    cptSelect.appendChild(first);
 
-  const sorted = PROCEDURES
-    .map((p,i)=>({p,i}))
-    .sort((a,b)=> (b.p.allowed||0) - (a.p.allowed||0));
+    const cptCodes = Array.from(state.feeMap.keys()).sort();
+    cptCodes.forEach(cpt => {
+      const opt = document.createElement("option");
+      opt.value = cpt;
+      opt.textContent = cpt;
+      cptSelect.appendChild(opt);
+    });
 
-  sorted.forEach((x, orderIndex) => {
-    const pct = computeMultiProcAdjPct(orderIndex);
-    x.p.adjPct = pct;
-    x.p.adjAllowed = (x.p.allowed || 0) * pct;
-    x.p.lineTotal = x.p.adjAllowed * (x.p.qty || 1);
-  });
+    cptSelect.value = r.cpt || "";
+    cptSelect.addEventListener("change", () => {
+      r.cpt = cptSelect.value;
 
-  const totalAllowed = PROCEDURES.reduce((sum,p)=> sum + (p.lineTotal||0), 0);
+      const info = state.feeMap.get(r.cpt);
+      r.desc = info ? info.desc : "";
+      r.fee = info ? info.fee : 0;
 
-  const copay = Number($("copay")?.value || 0);
-  const dedRemaining = Number($("deductibleRemaining")?.value || 0);
-  const coinsPct = Number($("coinsurancePct")?.value || 0);
-  const oopRemaining = Number($("oopMaxRemaining")?.value || 0);
+      renderRows();     // refresh desc/fee display
+      recalcTotals();
+    });
 
-  const dedApplied = Math.min(dedRemaining, totalAllowed);
-  const afterDed = Math.max(0, totalAllowed - dedApplied);
-  const coinsuranceAmt = afterDed * coinsPct;
+    tdCpt.appendChild(cptSelect);
+    tr.appendChild(tdCpt);
 
-  let due = copay + dedApplied + coinsuranceAmt;
-  if (oopRemaining > 0) due = Math.min(due, oopRemaining);
+    // Description (read-only)
+    const tdDesc = document.createElement("td");
+    const descInput = document.createElement("input");
+    descInput.type = "text";
+    descInput.value = r.desc || "";
+    descInput.placeholder = "Auto-filled from CPT";
+    descInput.disabled = true;
+    tdDesc.appendChild(descInput);
+    tr.appendChild(tdDesc);
 
-  const recommendedDeposit = due;
+    // Fee (read-only)
+    const tdFee = document.createElement("td");
+    tdFee.className = "money";
+    tdFee.textContent = money(r.fee);
+    tr.appendChild(tdFee);
 
-  $("kTotalAllowed").textContent = money(totalAllowed);
-  $("kDedApplied").textContent = money(dedApplied);
-  $("kCoinsurance").textContent = money(coinsuranceAmt);
-  $("kCopay").textContent = money(copay);
-  $("kDue").textContent = money(due);
-  $("kDeposit").textContent = money(recommendedDeposit);
+    // Qty
+    const tdQty = document.createElement("td");
+    const qtyInput = document.createElement("input");
+    qtyInput.type = "number";
+    qtyInput.min = "1";
+    qtyInput.step = "1";
+    qtyInput.value = String(r.qty ?? 1);
+    qtyInput.addEventListener("input", () => {
+      r.qty = Math.max(1, Math.floor(parseNumber(qtyInput.value)));
+      recalcTotals();
+      renderRows(); // refresh line total display
+    });
+    tdQty.appendChild(qtyInput);
+    tr.appendChild(tdQty);
 
-  window.__QUOTE_TOTALS = {
-    totalAllowed,
-    deductibleApplied: dedApplied,
-    coinsuranceAmount: coinsuranceAmt,
-    copay,
-    estimatedOwes: due,
-    recommendedDeposit
-  };
-}
+    // Line Total
+    const tdLine = document.createElement("td");
+    tdLine.className = "money";
+    tdLine.textContent = money(num(r.fee) * num(r.qty));
+    tr.appendChild(tdLine);
 
-// -------------------- quote save + history --------------------
-async function saveQuote(){
-  const payload = {
-    patientName: $("patientName")?.value || "",
-    insurancePlan: $("insurancePlan")?.value || "",
-    preparedBy: $("preparedBy")?.value || "",
-    clinic: $("clinic")?.value || "",
-    provider: $("provider")?.value || "",
-    copay: Number($("copay")?.value || 0),
-    deductibleRemaining: Number($("deductibleRemaining")?.value || 0),
-    coinsurancePct: Number($("coinsurancePct")?.value || 0),
-    oopMaxRemaining: Number($("oopMaxRemaining")?.value || 0),
-    procedures: PROCEDURES,
-    totals: window.__QUOTE_TOTALS || {}
-  };
+    // Remove button
+    const tdActions = document.createElement("td");
+    const delBtn = document.createElement("button");
+    delBtn.className = "btn danger icon-btn";
+    delBtn.textContent = "X";
+    delBtn.title = "Remove row";
+    delBtn.addEventListener("click", () => removeRow(r.id));
+    tdActions.appendChild(delBtn);
+    tr.appendChild(tdActions);
 
-  const res = await fetchJson("/api/quotes", {
-    method:"POST",
-    headers: { "Content-Type":"application/json" },
-    body: JSON.stringify(payload)
-  });
-
-  if (!res.ok) throw new Error(res.error || "Save failed");
-  return res;
-}
-
-let QH_ITEMS = [];
-
-function renderQuoteHistory(items){
-  const tbody = $("qhTbody");
-  if (!tbody) return;
-
-  tbody.innerHTML = "";
-  if (!items || !items.length){
-    tbody.innerHTML = `<tr><td colspan="8" class="muted">No data yet.</td></tr>`;
-    return;
-  }
-
-  for (const x of items){
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${x.createdAtLocal || x.createdAt || ""}</td>
-      <td>${x.patientName || ""}</td>
-      <td>${x.provider || ""}</td>
-      <td>${x.clinic || ""}</td>
-      <td>${x.createdBy || ""}</td>
-      <td class="right">${money(x.recommendedDeposit || 0)}</td>
-      <td class="right">${money(x.estimatedOwes || 0)}</td>
-      <td>${x.quoteId ? "✓" : ""}</td>
-    `;
     tbody.appendChild(tr);
   }
 }
 
-async function loadQuoteHistory(){
-  clearQhError();
+/* =========================
+   TOTALS
+   ========================= */
 
-  const from = $("qhFrom")?.value || "";
-  const to = $("qhTo")?.value || "";
-  const take = Math.max(1, Math.min(parseInt($("qhTake")?.value || "50", 10) || 50, 200));
+function recalcTotals(){
+  let subtotal = 0;
+  for (const r of state.rows){
+    subtotal += num(r.fee) * num(r.qty);
+  }
+  $("subtotal").textContent = money(subtotal);
+  $("grandTotal").textContent = money(subtotal);
+}
 
-  const q = $("qhSearch")?.value?.trim() || "";
-  const staff = $("qhStaff")?.value?.trim() || "";
-  const clinic = $("qhClinic")?.value?.trim() || "";
-  const provider = $("qhProvider")?.value?.trim() || "";
+/* =========================
+   QUOTE SAVE + HISTORY
+   ========================= */
 
-  const qs = new URLSearchParams();
-  if (from) qs.set("from", from);
-  if (to) qs.set("to", to);
-  qs.set("take", String(take));
-  if (q) qs.set("q", q);
-  if (staff) qs.set("staff", staff);
-  if (clinic) qs.set("clinic", clinic);
-  if (provider) qs.set("provider", provider);
+function clearQuote(){
+  if (!confirm("Clear current quote?")) return;
+  $("patientName").value = "";
+  $("quoteNotes").value = "";
+  state.rows = [];
+  for (let i=0; i<3; i++) addRow();
+  recalcTotals();
+}
 
-  const data = await fetchJson("/api/quotes?" + qs.toString());
-
-  if (!data || data.ok !== true || !Array.isArray(data.items)){
-    throw new Error("Unexpected response from /api/quotes\n" + JSON.stringify(data, null, 2));
+function saveQuote(){
+  // Basic validation: at least 1 CPT chosen
+  const hasCpt = state.rows.some(r => r.cpt);
+  if (!hasCpt){
+    alert("Select at least one CPT before saving.");
+    return;
   }
 
-  QH_ITEMS = data.items;
-  renderQuoteHistory(QH_ITEMS);
+  const quote = {
+    id: crypto.randomUUID(),
+    savedAt: new Date().toISOString(),
+    patientName: $("patientName").value.trim(),
+    quoteDate: $("quoteDate").value,
+    notes: $("quoteNotes").value.trim(),
+    rows: state.rows
+      .filter(r => r.cpt)
+      .map(r => ({
+        provider: r.provider || "",
+        cpt: r.cpt,
+        desc: r.desc,
+        fee: num(r.fee),
+        qty: num(r.qty),
+        lineTotal: num(r.fee) * num(r.qty)
+      }))
+  };
+
+  quote.total = quote.rows.reduce((s, r) => s + num(r.lineTotal), 0);
+
+  state.history.unshift(quote);
+  // keep last 50
+  state.history = state.history.slice(0, 50);
+
+  saveHistory(state.history);
+  renderHistory();
+
+  alert("Quote saved.");
 }
 
-function exportQuoteHistory(){
-  const headers = [
-    "createdAt","createdAtLocal","patientName","provider","clinic","createdBy",
-    "recommendedDeposit","estimatedOwes","quoteId","partitionKey","rowKey"
-  ];
-  downloadCsv("quote-history.csv", headers, QH_ITEMS || []);
-}
-
-// -------------------- fee schedule auto-load logic --------------------
-function applyFeeSchedule(csvText, label){
-  loadFeeScheduleFromCsv(csvText);
-  setFeeLoadedText(`${FEE_MAP.size} CPTs loaded${label ? " (" + label + ")" : ""}`);
-  renderFeePreview();
-  recalcAll();
-  renderProcedures();
-}
-
-async function autoLoadFeeSchedule(){
-  // 1) localStorage cache
-  const cached = loadFeeScheduleCsv();
-  if (cached){
-    try{
-      applyFeeSchedule(cached, "cached");
-      return;
-    } catch (e){
-      console.warn("Cached fee schedule failed to parse; clearing cache.", e);
-      clearFeeScheduleCsv();
-    }
-  }
-
-  // 2) fallback: fetch feeSchedule.sample.csv
+function loadHistory(){
   try{
-    const sample = await fetchText(DEFAULT_FEE_URL);
-    applyFeeSchedule(sample, "sample");
-    // cache it so it persists
-    saveFeeScheduleCsv(sample);
-    return;
-  } catch (e){
-    console.warn("No sample fee schedule available.", e);
+    const raw = localStorage.getItem("estimate_history_v1");
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  }catch{
+    return [];
   }
-
-  // 3) nothing
-  setFeeLoadedText("No fee schedule loaded");
-  renderFeePreview();
 }
 
-// -------------------- init + events --------------------
-document.addEventListener("DOMContentLoaded", async () => {
-  $("logoutBtn").onclick = () => window.location.href = "/.auth/logout";
+function saveHistory(history){
+  localStorage.setItem("estimate_history_v1", JSON.stringify(history));
+}
 
-  $("addProcBtn").onclick = () => {
-    PROCEDURES.push({ cpt:"", desc:"", qty:1, allowed:0, adjPct:1, adjAllowed:0, lineTotal:0 });
-    recalcAll();
-    renderProcedures();
-  };
+function renderHistory(){
+  const host = $("historyList");
+  host.innerHTML = "";
 
-  $("resetBtn").onclick = () => {
-    PROCEDURES = [];
-    recalcAll();
-    renderProcedures();
-  };
-
-  $("saveQuoteBtn").onclick = async () => {
-    try{
-      const res = await saveQuote();
-      alert(`Saved quote ${res.quoteId}`);
-      await loadQuoteHistory();
-    } catch (e){
-      console.error(e);
-      alert(e.message || String(e));
-    }
-  };
-
-  $("qhRefreshBtn").onclick = async () => {
-    try { await loadQuoteHistory(); }
-    catch(e){
-      console.error(e);
-      showQhError(e.message || String(e));
-      $("qhTbody").innerHTML = `<tr><td colspan="8">Error: ${String(e.message || e)}</td></tr>`;
-    }
-  };
-
-  $("qhExportBtn").onclick = () => exportQuoteHistory();
-
-  $("qhTodayBtn").onclick = async () => {
-    const today = toYmdLocal(new Date());
-    $("qhFrom").value = today;
-    $("qhTo").value = today;
-    $("qhRefreshBtn").click();
-  };
-
-  $("qhWeekBtn").onclick = async () => {
-    const now = new Date();
-    const start = startOfWeek(now);
-    $("qhFrom").value = toYmdLocal(start);
-    $("qhTo").value = toYmdLocal(now);
-    $("qhRefreshBtn").click();
-  };
-
-  ["copay","deductibleRemaining","coinsurancePct","oopMaxRemaining"].forEach(id => {
-    const el = $(id);
-    if (el) el.addEventListener("input", () => { recalcAll(); renderProcedures(); });
-  });
-
-  // Upload + persist fee schedule
-  $("feeFile").addEventListener("change", async () => {
-    const file = $("feeFile").files?.[0];
-    if (!file) return;
-
-    try{
-      const text = await file.text();
-      applyFeeSchedule(text, "uploaded");
-      saveFeeScheduleCsv(text); // overwrite cache
-    } catch(e){
-      console.error(e);
-      alert(e.message || String(e));
-    }
-  });
-
-  // defaults
-  const today = toYmdLocal(new Date());
-  $("qhFrom").value = today;
-  $("qhTo").value = today;
-
-  // init procedures + totals
-  recalcAll();
-  renderProcedures();
-
-  // ✅ load auth + fee schedule + history
-  try { await loadAuth(); } catch(e){ console.error(e); }
-
-  try { await autoLoadFeeSchedule(); } catch(e){ console.error(e); }
-
-  try { await loadQuoteHistory(); }
-  catch(e){
-    console.error(e);
-    showQhError(e.message || String(e));
+  if (!state.history.length){
+    const empty = document.createElement("div");
+    empty.className = "history-item";
+    empty.innerHTML = `<div class="history-meta">No saved quotes yet.</div>`;
+    host.appendChild(empty);
+    return;
   }
-});
+
+  state.history.forEach(q => {
+    const div = document.createElement("div");
+    div.className = "history-item";
+
+    const title = q.patientName ? q.patientName : "Unnamed Patient";
+    const when = new Date(q.savedAt);
+    const whenStr = when.toLocaleString();
+
+    const top = document.createElement("div");
+    top.className = "history-top";
+    top.innerHTML = `
+      <div>
+        <div class="history-title">${escapeHtml(title)}</div>
+        <div class="history-meta">${escapeHtml(q.quoteDate || "")} • Saved ${escapeHtml(whenStr)}</div>
+      </div>
+      <div class="history-title">${money(q.total)}</div>
+    `;
+
+    const lines = document.createElement("div");
+    lines.className = "history-lines";
+    lines.innerHTML = q.rows.map(r => {
+      const prov = r.provider ? ` (${escapeHtml(r.provider)})` : "";
+      return `• ${escapeHtml(r.cpt)} - ${escapeHtml(r.desc)}${prov} • ${money(r.fee)} x ${r.qty} = <b>${money(r.lineTotal)}</b>`;
+    }).join("<br/>");
+
+    div.appendChild(top);
+    div.appendChild(lines);
+
+    host.appendChild(div);
+  });
+}
+
+function exportHistoryCSV(){
+  if (!state.history.length){
+    alert("No history to export.");
+    return;
+  }
+
+  const rows = [];
+  rows.push([
+    "SavedAt",
+    "QuoteDate",
+    "PatientName",
+    "Notes",
+    "Provider",
+    "CPT",
+    "Description",
+    "Fee",
+    "Qty",
+    "LineTotal",
+    "QuoteTotal"
+  ]);
+
+  state.history.forEach(q => {
+    q.rows.forEach(r => {
+      rows.push([
+        q.savedAt,
+        q.quoteDate || "",
+        q.patientName || "",
+        q.notes || "",
+        r.provider || "",
+        r.cpt,
+        r.desc,
+        r.fee,
+        r.qty,
+        r.lineTotal,
+        q.total
+      ]);
+    });
+  });
+
+  const csv = rows.map(r => r.map(csvCell).join(",")).join("\n");
+  downloadTextFile(`quote_history_${new Date().toISOString().slice(0,10)}.csv`, csv, "text/csv");
+}
+
+/* =========================
+   UTILS
+   ========================= */
+
+function csvCell(v){
+  const s = String(v ?? "");
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g,'""')}"`;
+  return s;
+}
+
+function downloadTextFile(filename, content, mime){
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function escapeHtml(s){
+  return String(s ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
