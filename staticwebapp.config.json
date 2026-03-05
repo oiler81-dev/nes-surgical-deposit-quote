@@ -5,8 +5,12 @@
       "allowedRoles": ["admin"]
     },
     {
-      "route": "/api/reports/*",
+      "route": "/api/admin-report",
       "allowedRoles": ["admin"]
+    },
+    {
+      "route": "/api/*",
+      "allowedRoles": ["authenticated"]
     },
     {
       "route": "/*",
