@@ -5,13 +5,9 @@
       "type": "httpTrigger",
       "direction": "in",
       "name": "req",
-      "methods": ["post"],
-      "route": "createQuote"
+      "methods": ["get"],
+      "route": "quotes/{quoteId}"
     },
-    {
-      "type": "http",
-      "direction": "out",
-      "name": "res"
-    }
+    { "type": "http", "direction": "out", "name": "res" }
   ]
 }
