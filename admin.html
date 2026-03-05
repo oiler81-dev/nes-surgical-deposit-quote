@@ -3,184 +3,190 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>NES Admin Dashboard</title>
-  <link rel="stylesheet" href="styles.css" />
+  <title>Admin Dashboard - Surgical Deposit Quotes</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .wrap{max-width:1200px;margin:0 auto;padding:16px}
+    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px}
+    .grow{flex:1}
+    label{display:block;font-size:12px;color:#374151;margin-bottom:6px}
+    input,select{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:10px}
+    button{padding:10px 12px;border:1px solid #111827;border-radius:10px;background:#111827;color:#fff;cursor:pointer}
+    button.secondary{background:#fff;color:#111827}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:10px;border-bottom:1px solid #e5e7eb;text-align:left;font-size:14px}
+    .muted{color:#6b7280;font-size:12px}
+    .err{background:#fee2e2;border:1px solid #fecaca;color:#991b1b;padding:10px;border-radius:10px;white-space:pre-wrap}
+  </style>
 </head>
 <body>
-  <header class="topbar">
-    <div class="wrap topbar__inner">
-      <div class="brand">
-        <img class="brand__logo" src="assets/nes-logo.png" alt="NES logo" />
-        <div class="brand__text">
-          <div class="brand__title">Admin Dashboard</div>
-          <div class="brand__sub">Surgical Deposit Quotes</div>
-        </div>
-      </div>
+  <div class="wrap">
+    <h1 style="margin:0 0 6px">Admin Dashboard</h1>
+    <div class="muted" style="margin-bottom:12px">Surgical Deposit Quotes</div>
 
-      <div class="topbar__actions">
-        <a class="btn btn--ghost" href="/">Back to Quotes</a>
-        <button id="btnAdminToday" class="btn btn--ghost" type="button">Today</button>
-        <button id="btnAdminThisWeek" class="btn btn--ghost" type="button">This Week</button>
-        <button id="btnAdminExport" class="btn btn--ghost" type="button">Export CSV</button>
-        <button id="btnAdminRefresh" class="btn" type="button">Refresh</button>
-        <a class="btn btn--ghost" href="/.auth/logout">Logout</a>
+    <div id="errorBox" class="err" style="display:none;margin-bottom:12px"></div>
+
+    <div class="card" style="margin-bottom:12px">
+      <div class="row">
+        <div>
+          <label>From</label>
+          <input id="fromDate" type="date" />
+        </div>
+        <div>
+          <label>To</label>
+          <input id="toDate" type="date" />
+        </div>
+        <div class="grow">
+          <label>Clinic filter (optional)</label>
+          <input id="clinic" placeholder="e.g. NES - Portland" />
+        </div>
+        <div class="grow">
+          <label>Provider filter (optional)</label>
+          <input id="provider" placeholder="e.g. Dr. Smith" />
+        </div>
+
+        <div class="row" style="gap:8px">
+          <button id="refreshBtn">Refresh</button>
+          <button class="secondary" id="exportBtn">Export CSV</button>
+          <button class="secondary" id="logoutBtn">Logout</button>
+        </div>
       </div>
     </div>
-  </header>
 
-  <main class="wrap layout">
-    <section class="card">
-      <div class="card__header">
-        <h2>Report Filters</h2>
-        <div class="pillRow">
-          <div class="pill pill--muted" id="adminWhoAmI">Signed in</div>
-        </div>
+    <div class="row" style="margin-bottom:12px">
+      <div class="card">
+        <div class="muted">Quotes</div>
+        <div id="kpiQuotes" style="font-size:28px;font-weight:700">-</div>
       </div>
-
-      <div class="grid grid--3">
-        <div>
-          <label class="label">From</label>
-          <input id="adminFrom" class="input" type="date" />
-        </div>
-        <div>
-          <label class="label">To</label>
-          <input id="adminTo" class="input" type="date" />
-        </div>
-        <div>
-          <label class="label">Clinic filter (optional)</label>
-          <input id="adminClinic" class="input" type="text" placeholder="NES - Portland" />
-        </div>
-
-        <div>
-          <label class="label">Provider filter (optional)</label>
-          <input id="adminProvider" class="input" type="text" placeholder="Dr. Lastname" />
-        </div>
+      <div class="card">
+        <div class="muted">Recommended Deposits</div>
+        <div id="kpiDeposits" style="font-size:28px;font-weight:700">-</div>
       </div>
-    </section>
-
-    <section class="card">
-      <div class="card__header">
-        <h2>Summary</h2>
+      <div class="card">
+        <div class="muted">Estimated Owes</div>
+        <div id="kpiDue" style="font-size:28px;font-weight:700">-</div>
       </div>
+    </div>
 
-      <div class="totals">
-        <div class="totals__grid">
-          <div class="totals__item totals__item--highlight">
-            <div class="totals__label">Total Quotes</div>
-            <div class="totals__value" id="sumQuotes">0</div>
-          </div>
+    <div class="card">
+      <h3 style="margin:0 0 10px">By Provider</h3>
+      <table>
+        <thead>
+          <tr><th>Provider</th><th>Quotes</th><th>Deposits</th><th>Due</th></tr>
+        </thead>
+        <tbody id="byProviderTbody"></tbody>
+      </table>
+    </div>
+  </div>
 
-          <div class="totals__item">
-            <div class="totals__label">Total Recommended Deposits</div>
-            <div class="totals__value" id="sumDeposits">$0.00</div>
-          </div>
+  <script>
+    function showError(msg){
+      const el = document.getElementById("errorBox");
+      el.style.display = "block";
+      el.textContent = msg;
+    }
+    function clearError(){
+      const el = document.getElementById("errorBox");
+      el.style.display = "none";
+      el.textContent = "";
+    }
+    function fmtMoney(n){
+      const v = Number(n || 0);
+      return v.toLocaleString(undefined, { style:"currency", currency:"USD" });
+    }
 
-          <div class="totals__item">
-            <div class="totals__label">Total Estimated Amount Due</div>
-            <div class="totals__value" id="sumDue">$0.00</div>
-          </div>
-        </div>
-      </div>
+    async function fetchText(url){
+      const res = await fetch(url, { cache: "no-store" });
+      const text = await res.text();
+      if (!res.ok) {
+        throw new Error("HTTP " + res.status + ":\n" + text);
+      }
+      return text;
+    }
 
-      <hr class="sep" />
+    async function loadReport(){
+      clearError();
 
-      <div class="grid grid--3">
-        <div class="card">
-          <div class="card__header"><h2>Deposits by Provider (Top 10)</h2></div>
-          <canvas id="chartDepositsByProvider" width="360" height="220"></canvas>
-        </div>
+      const from = document.getElementById("fromDate").value;
+      const to = document.getElementById("toDate").value;
+      const clinic = document.getElementById("clinic").value.trim();
+      const provider = document.getElementById("provider").value.trim();
 
-        <div class="card">
-          <div class="card__header"><h2>Quotes by Staff (Top 10)</h2></div>
-          <canvas id="chartQuotesByStaff" width="360" height="220"></canvas>
-        </div>
+      const qs = new URLSearchParams();
+      if (from) qs.set("from", from);
+      if (to) qs.set("to", to);
+      if (clinic) qs.set("clinic", clinic);
+      if (provider) qs.set("provider", provider);
 
-        <div class="card">
-          <div class="card__header"><h2>Deposits Trend (by date)</h2></div>
-          <canvas id="chartDepositsByDate" width="360" height="220"></canvas>
-        </div>
-      </div>
+      const url = "/api/admin-report" + (qs.toString() ? ("?" + qs.toString()) : "");
+      const text = await fetchText(url);
+      const data = JSON.parse(text);
 
-      <hr class="sep" />
+      document.getElementById("kpiQuotes").textContent = data.summary?.quotes ?? 0;
+      document.getElementById("kpiDeposits").textContent = fmtMoney(data.summary?.deposits ?? 0);
+      document.getElementById("kpiDue").textContent = fmtMoney(data.summary?.due ?? 0);
 
-      <div class="grid grid--2">
-        <div>
-          <h3 class="printSectionTitle">By Provider</h3>
-          <div class="tableWrap">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Provider</th>
-                  <th class="num">Quotes</th>
-                  <th class="num">Deposits</th>
-                  <th class="num">Due</th>
-                </tr>
-              </thead>
-              <tbody id="byProviderTbody"></tbody>
-            </table>
-          </div>
-        </div>
+      const tbody = document.getElementById("byProviderTbody");
+      tbody.innerHTML = "";
+      (data.byProvider || []).slice(0, 50).forEach(row => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${row.provider || "(blank)"}</td>
+          <td>${row.quotes || 0}</td>
+          <td>${fmtMoney(row.deposits || 0)}</td>
+          <td>${fmtMoney(row.due || 0)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
 
-        <div>
-          <h3 class="printSectionTitle">By Staff</h3>
-          <div class="tableWrap">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Staff</th>
-                  <th class="num">Quotes</th>
-                  <th class="num">Deposits</th>
-                  <th class="num">Due</th>
-                </tr>
-              </thead>
-              <tbody id="byStaffTbody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+      // store last export items in memory for CSV export button
+      window.__exportItems = data.exportItems || [];
+    }
 
-      <div class="grid grid--2">
-        <div>
-          <h3 class="printSectionTitle">By Clinic</h3>
-          <div class="tableWrap">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Clinic</th>
-                  <th class="num">Quotes</th>
-                  <th class="num">Deposits</th>
-                  <th class="num">Due</th>
-                </tr>
-              </thead>
-              <tbody id="byClinicTbody"></tbody>
-            </table>
-          </div>
-        </div>
+    function exportCsv(){
+      const rows = window.__exportItems || [];
+      const headers = ["date","createdAt","patientName","provider","clinic","createdBy","recommendedDeposit","estimatedOwes","quoteId"];
+      const escape = (v) => {
+        const s = String(v ?? "");
+        if (s.includes('"') || s.includes(",") || s.includes("\n")) return '"' + s.replaceAll('"','""') + '"';
+        return s;
+      };
+      const csv = [headers.join(",")]
+        .concat(rows.map(r => headers.map(h => escape(r[h])).join(",")))
+        .join("\n");
 
-        <div>
-          <h3 class="printSectionTitle">By Date</h3>
-          <div class="tableWrap">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th class="num">Quotes</th>
-                  <th class="num">Deposits</th>
-                  <th class="num">Due</th>
-                </tr>
-              </thead>
-              <tbody id="byDateTbody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </section>
-  </main>
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "admin-report.csv";
+      a.click();
+    }
 
-  <footer class="footer wrap">
-    <div class="muted">Admins only.</div>
-  </footer>
+    document.getElementById("refreshBtn").addEventListener("click", async () => {
+      try { await loadReport(); } catch(e){ showError(e.message || String(e)); }
+    });
 
-  <script src="app.js"></script>
+    document.getElementById("exportBtn").addEventListener("click", () => {
+      try { exportCsv(); } catch(e){ showError(e.message || String(e)); }
+    });
+
+    document.getElementById("logoutBtn").addEventListener("click", () => {
+      window.location.href = "/.auth/logout";
+    });
+
+    // Default date range: today -> today
+    (function init(){
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth()+1).padStart(2,"0");
+      const d = String(now.getDate()).padStart(2,"0");
+      const today = `${y}-${m}-${d}`;
+      document.getElementById("fromDate").value = today;
+      document.getElementById("toDate").value = today;
+
+      loadReport().catch(e => showError(e.message || String(e)));
+    })();
+  </script>
 </body>
 </html>
