@@ -6,7 +6,7 @@
       "direction": "in",
       "name": "req",
       "methods": ["get"],
-      "route": "reports/summary"
+      "route": "reportSummary"
     },
     {
       "type": "http",
