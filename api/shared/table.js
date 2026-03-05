@@ -1,9 +1,18 @@
+// api/shared/table.js
 const { TableClient } = require("@azure/data-tables");
 
-function getUserFromSwa(req){
-  const b64 = req.headers["x-ms-client-principal"];
+/**
+ * Read the SWA user principal from the request headers.
+ * Returns parsed principal object or null.
+ */
+function getUserFromSwa(req) {
+  const b64 =
+    (req.headers && (req.headers["x-ms-client-principal"] || req.headers["X-MS-CLIENT-PRINCIPAL"])) ||
+    null;
+
   if (!b64) return null;
-  try{
+
+  try {
     const json = Buffer.from(b64, "base64").toString("utf8");
     return JSON.parse(json);
   } catch {
@@ -11,7 +20,10 @@ function getUserFromSwa(req){
   }
 }
 
-function jsonResponse(context, status, body){
+/**
+ * Standard JSON response helper
+ */
+function jsonResponse(context, status, body) {
   context.res = {
     status,
     headers: { "Content-Type": "application/json" },
@@ -19,21 +31,49 @@ function jsonResponse(context, status, body){
   };
 }
 
-function getClient(){
-  const conn = process.env.AZURE_STORAGE_CONNECTION_STRING;
+/**
+ * Storage connection resolution:
+ * - Prefer AZURE_STORAGE_CONNECTION_STRING (your custom var)
+ * - Fallback to AzureWebJobsStorage (standard Functions var)
+ */
+function getStorageConnectionString() {
+  return (
+    process.env.AZURE_STORAGE_CONNECTION_STRING ||
+    process.env.AzureWebJobsStorage || // standard Functions setting
+    process.env.AZUREWEBJOBSSTORAGE // just in case of odd casing
+  );
+}
+
+/**
+ * Gets a TableClient for quotes table.
+ * Requires a storage connection string in either:
+ * - AZURE_STORAGE_CONNECTION_STRING
+ * - AzureWebJobsStorage
+ */
+function getClient() {
+  const conn = getStorageConnectionString();
   const tableName = process.env.QUOTES_TABLE_NAME || "SurgicalDepositQuotes";
-  if (!conn) throw new Error("Missing AZURE_STORAGE_CONNECTION_STRING");
+
+  if (!conn) {
+    throw new Error(
+      "Missing storage connection string. Set AZURE_STORAGE_CONNECTION_STRING or AzureWebJobsStorage in Static Web App Environment Variables."
+    );
+  }
+
   return TableClient.fromConnectionString(conn, tableName);
 }
 
-function ymdCompact(dateObj){
+/**
+ * YYYYMMDD (UTC), string-sortable
+ */
+function ymdCompact(dateObj) {
   const yyyy = dateObj.getUTCFullYear();
-  const mm = String(dateObj.getUTCMonth()+1).padStart(2,"0");
-  const dd = String(dateObj.getUTCDate()).padStart(2,"0");
-  return `${yyyy}${mm}${dd}`; // string-sortable
+  const mm = String(dateObj.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(dateObj.getUTCDate()).padStart(2, "0");
+  return `${yyyy}${mm}${dd}`;
 }
 
-function isoNow(){
+function isoNow() {
   return new Date().toISOString();
 }
 
