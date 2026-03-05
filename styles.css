@@ -1,27 +1,49 @@
 :root{
-  --bg:#0b0f14;
-  --card:#111824;
-  --muted:#8aa0b5;
-  --text:#e7eef6;
-  --line:#1f2b3a;
-  --btn:#1a2634;
-  --btnHover:#233446;
-  --primary:#2a7fff;
-  --danger:#d64545;
-  --shadow: 0 10px 30px rgba(0,0,0,.35);
+  /* NES brand pulled from logo */
+  --navy:#173B64;
+  --green:#406936;
+  --ink:#1D1C1A;
+
+  /* neutrals */
+  --bg:#F6F8F7;
+  --card:#FFFFFF;
+  --muted:#5A6B61;
+  --line:#D7E0DA;
+
+  /* UI */
+  --shadow: 0 10px 28px rgba(23,59,100,.10);
   --radius: 14px;
+
+  --btn-bg:#FFFFFF;
+  --btn-ink:var(--navy);
+  --btn-line:rgba(23,59,100,.25);
+  --btn-hover:rgba(23,59,100,.06);
+
+  --primary-bg:var(--navy);
+  --primary-ink:#FFFFFF;
+
+  --danger:#B42318;
+  --danger-bg:rgba(180,35,24,.08);
+  --danger-line:rgba(180,35,24,.25);
 }
 
 *{ box-sizing:border-box; }
+
+html, body{
+  height:100%;
+}
+
 body{
   margin:0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
-  background: radial-gradient(1200px 600px at 20% -10%, rgba(42,127,255,.18), transparent 55%),
-              radial-gradient(900px 500px at 90% 10%, rgba(214,69,69,.12), transparent 60%),
-              var(--bg);
-  color: var(--text);
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 500px at 15% -10%, rgba(64,105,54,.10), transparent 60%),
+    radial-gradient(1200px 500px at 85% 0%, rgba(23,59,100,.12), transparent 60%),
+    var(--bg);
 }
 
+/* Top bar */
 .topbar{
   position: sticky;
   top:0;
@@ -32,19 +54,31 @@ body{
   align-items:center;
   padding:14px 18px;
   border-bottom: 1px solid var(--line);
-  background: rgba(11,15,20,.85);
+  background: rgba(255,255,255,.88);
   backdrop-filter: blur(10px);
 }
 
-.brand-title{ font-weight:700; font-size:18px; }
-.brand-sub{ color:var(--muted); font-size:12px; margin-top:2px; }
+.brand-title{
+  font-weight:800;
+  font-size:18px;
+  letter-spacing:.2px;
+  color: var(--navy);
+}
+
+.brand-sub{
+  margin-top:2px;
+  color: var(--muted);
+  font-size:12px;
+}
 
 .actions{
   display:flex;
   gap:10px;
   flex-wrap:wrap;
+  align-items:center;
 }
 
+/* Layout */
 .wrap{
   max-width: 1200px;
   margin: 18px auto 34px;
@@ -54,7 +88,7 @@ body{
 }
 
 .card{
-  background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 16px;
@@ -64,11 +98,13 @@ body{
 h2{
   margin:0 0 12px;
   font-size:16px;
+  color: var(--navy);
 }
 
+/* Inputs */
 .grid{
   display:grid;
-  grid-template-columns: 1.2fr .5fr 1.3fr;
+  grid-template-columns: 1.2fr .6fr 1.2fr;
   gap:12px;
   margin-bottom: 12px;
 }
@@ -86,18 +122,36 @@ label{
 
 input, select{
   width:100%;
-  background: rgba(255,255,255,.04);
+  background: #FFFFFF;
   border:1px solid var(--line);
-  color: var(--text);
-  border-radius: 10px;
-  padding: 10px 10px;
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 10px 12px;
   outline:none;
 }
-input::placeholder{ color: rgba(138,160,181,.7); }
-select{
-  appearance:none;
+
+input::placeholder{ color: rgba(90,107,97,.75); }
+
+input:focus, select:focus{
+  border-color: rgba(23,59,100,.45);
+  box-shadow: 0 0 0 4px rgba(23,59,100,.10);
 }
 
+/* Make selects look nicer */
+select{
+  appearance:none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--navy) 50%),
+    linear-gradient(135deg, var(--navy) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% - 3px),
+    calc(100% - 12px) calc(50% - 3px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 34px;
+}
+
+/* Table */
 .table-wrap{
   overflow:auto;
   border-radius: 12px;
@@ -109,58 +163,77 @@ select{
   border-collapse: collapse;
   min-width: 900px;
 }
+
 .table thead th{
   text-align:left;
   font-size:12px;
-  color: var(--muted);
-  font-weight:600;
-  padding: 10px 10px;
+  color: rgba(23,59,100,.85);
+  font-weight:800;
+  padding: 12px 12px;
   border-bottom: 1px solid var(--line);
-  background: rgba(255,255,255,.02);
+  background: rgba(23,59,100,.04);
+  position: sticky;
+  top: 0;
 }
+
 .table tbody td{
-  padding: 10px 10px;
-  border-bottom: 1px solid rgba(31,43,58,.7);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
   vertical-align: middle;
+}
+
+.table tbody tr:hover{
+  background: rgba(64,105,54,.04);
 }
 
 .money{
   font-variant-numeric: tabular-nums;
 }
 
+/* Buttons */
 .btn{
-  background: var(--btn);
-  color: var(--text);
-  border: 1px solid var(--line);
+  background: var(--btn-bg);
+  color: var(--btn-ink);
+  border: 1px solid var(--btn-line);
   border-radius: 12px;
   padding: 10px 12px;
   cursor:pointer;
-  font-weight:600;
+  font-weight:800;
+  text-decoration:none;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
 }
-.btn:hover{ background: var(--btnHover); }
+
+.btn:hover{
+  background: var(--btn-hover);
+}
 
 .btn.primary{
-  background: rgba(42,127,255,.22);
-  border-color: rgba(42,127,255,.45);
+  background: var(--primary-bg);
+  color: var(--primary-ink);
+  border-color: rgba(23,59,100,.60);
 }
 .btn.primary:hover{
-  background: rgba(42,127,255,.30);
+  filter: brightness(1.05);
 }
 
 .btn.danger{
-  background: rgba(214,69,69,.18);
-  border-color: rgba(214,69,69,.35);
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: var(--danger-line);
 }
 .btn.danger:hover{
-  background: rgba(214,69,69,.26);
+  background: rgba(180,35,24,.12);
 }
 
 .icon-btn{
   padding: 8px 10px;
   border-radius: 10px;
-  font-weight:700;
+  font-weight:900;
 }
 
+/* Totals */
 .totals{
   margin-top: 14px;
   display:flex;
@@ -169,23 +242,31 @@ select{
   border-top: 1px solid var(--line);
   padding-top: 12px;
 }
+
 .totals-row{
   display:flex;
   justify-content:space-between;
   align-items:center;
+  gap:12px;
 }
+
 .totals-label{
   color: var(--muted);
   font-size:12px;
-}
-.totals-value{
   font-weight:700;
-  font-variant-numeric: tabular-nums;
-}
-.totals-value.big{
-  font-size: 20px;
 }
 
+.totals-value{
+  font-weight:900;
+  font-variant-numeric: tabular-nums;
+  color: var(--navy);
+}
+
+.totals-value.big{
+  font-size: 22px;
+}
+
+/* History */
 .history-header{
   display:flex;
   justify-content:space-between;
@@ -201,34 +282,38 @@ select{
 
 .history-item{
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 12px;
-  background: rgba(255,255,255,.02);
+  background: #FFFFFF;
+  box-shadow: 0 6px 18px rgba(23,59,100,.06);
 }
+
 .history-top{
   display:flex;
   justify-content:space-between;
   gap:10px;
   flex-wrap:wrap;
 }
+
 .history-title{
-  font-weight:800;
+  font-weight:900;
+  color: var(--navy);
 }
+
 .history-meta{
   color: var(--muted);
   font-size:12px;
+  margin-top:3px;
 }
+
 .history-lines{
   margin-top: 8px;
-  color: rgba(231,238,246,.9);
+  color: rgba(29,28,26,.92);
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.45;
 }
-.footer{
-  text-align:center;
-  color: var(--muted);
-  padding: 16px 0 26px;
-}
+
+/* Admin KPIs (if you’re using them) */
 .kpi-grid{
   display:grid;
   grid-template-columns: repeat(4, 1fr);
@@ -237,18 +322,30 @@ select{
 @media (max-width: 900px){
   .kpi-grid{ grid-template-columns: 1fr 1fr; }
 }
+
 .kpi{
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 12px;
-  background: rgba(255,255,255,.02);
+  background: linear-gradient(180deg, rgba(23,59,100,.04), rgba(64,105,54,.03));
 }
+
 .kpi-label{
   color: var(--muted);
   font-size: 12px;
+  font-weight:800;
 }
+
 .kpi-value{
   font-size: 20px;
-  font-weight: 800;
+  font-weight: 900;
   margin-top: 6px;
+  color: var(--navy);
+}
+
+/* Footer */
+.footer{
+  text-align:center;
+  color: var(--muted);
+  padding: 16px 0 26px;
 }
