@@ -65,23 +65,31 @@ function downloadCsv(filename, headers, rows){
   a.click();
 }
 
+// -------------------- fee schedule persistence --------------------
+const LS_FEE_KEY = "nes_feeSchedule_csv_v1";
+function saveFeeScheduleCsv(csvText){
+  try { localStorage.setItem(LS_FEE_KEY, csvText); } catch {}
+}
+function loadFeeScheduleCsv(){
+  try { return localStorage.getItem(LS_FEE_KEY) || ""; } catch { return ""; }
+}
+function clearFeeScheduleCsv(){
+  try { localStorage.removeItem(LS_FEE_KEY); } catch {}
+}
+
 // -------------------- auth: user + roles --------------------
 let CURRENT_USER = null;
 
 async function loadAuth(){
-  // SWA auth endpoint
   const data = await fetchJson("/.auth/me");
   const principal = data?.clientPrincipal || null;
   CURRENT_USER = principal;
 
-  // Prepared By default
   const preparedBy = $("preparedBy");
   if (preparedBy && principal){
-    // prefer userDetails (email) but fall back to name
     preparedBy.value = principal.userDetails || principal.userId || "";
   }
 
-  // Admin button if role exists
   const roles = principal?.userRoles || [];
   const isAdmin = roles.includes("admin");
 
@@ -97,7 +105,6 @@ let FEE_MAP = new Map(); // CPT -> { cpt, desc, allowed }
 let PROCEDURES = [];     // { cpt, desc, qty, allowed, adjPct, adjAllowed, lineTotal }
 
 function parseCsv(text){
-  // very small CSV parser; handles quotes, commas
   const rows = [];
   let i=0, field="", row=[], inQuotes=false;
 
@@ -212,7 +219,6 @@ function renderProcedures(){
     tbody.appendChild(tr);
   });
 
-  // wire input changes
   tbody.querySelectorAll("input[data-field]").forEach(inp => {
     inp.addEventListener("input", () => {
       const idx = parseInt(inp.getAttribute("data-idx"), 10);
@@ -222,7 +228,6 @@ function renderProcedures(){
       if (field === "qty") val = Math.max(1, parseInt(val || "1", 10) || 1);
       PROCEDURES[idx][field] = val;
 
-      // if CPT changes, pull from fee map
       if (field === "cpt"){
         const hit = FEE_MAP.get(String(val).trim());
         if (hit){
@@ -233,11 +238,10 @@ function renderProcedures(){
         }
       }
       recalcAll();
-      renderProcedures(); // keeps table consistent
+      renderProcedures();
     });
   });
 
-  // wire remove buttons
   tbody.querySelectorAll("button[data-del]").forEach(btn => {
     btn.addEventListener("click", () => {
       const idx = parseInt(btn.getAttribute("data-del"), 10);
@@ -249,13 +253,10 @@ function renderProcedures(){
 }
 
 function computeMultiProcAdjPct(orderIndex){
-  // Example: first = 100%, others = 50%
-  // You can adjust this logic later.
   return orderIndex === 0 ? 1.0 : 0.5;
 }
 
 function recalcAll(){
-  // 1) Update allowed/desc from fee schedule when possible
   for (const p of PROCEDURES){
     const hit = FEE_MAP.get(String(p.cpt||"").trim());
     if (hit){
@@ -267,7 +268,6 @@ function recalcAll(){
     p.qty = Math.max(1, parseInt(p.qty || "1", 10) || 1);
   }
 
-  // 2) Apply multi-procedure adjustment based on highest allowed first
   const sorted = PROCEDURES
     .map((p,i)=>({p,i}))
     .sort((a,b)=> (b.p.allowed||0) - (a.p.allowed||0));
@@ -279,7 +279,6 @@ function recalcAll(){
     x.p.lineTotal = x.p.adjAllowed * (x.p.qty || 1);
   });
 
-  // 3) Totals
   const totalAllowed = PROCEDURES.reduce((sum,p)=> sum + (p.lineTotal||0), 0);
 
   const copay = Number($("copay")?.value || 0);
@@ -295,7 +294,6 @@ function recalcAll(){
   let due = copay + dedApplied + coinsuranceAmt;
   if (oopRemaining > 0) due = Math.min(due, oopRemaining);
 
-  // deposit rule: for now use due (you can change later)
   const recommendedDeposit = due;
 
   $("kTotalAllowed").textContent = money(totalAllowed);
@@ -305,7 +303,6 @@ function recalcAll(){
   $("kDue").textContent = money(due);
   $("kDeposit").textContent = money(recommendedDeposit);
 
-  // stash totals for save payload
   window.__QUOTE_TOTALS = {
     totalAllowed,
     deductibleApplied: dedApplied,
@@ -412,7 +409,6 @@ function exportQuoteHistory(){
 
 // -------------------- init + events --------------------
 document.addEventListener("DOMContentLoaded", async () => {
-  // buttons
   $("logoutBtn").onclick = () => window.location.href = "/.auth/logout";
 
   $("addProcBtn").onclick = () => {
@@ -464,13 +460,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     $("qhRefreshBtn").click();
   };
 
-  // recalc on input changes
   ["copay","deductibleRemaining","coinsurancePct","oopMaxRemaining"].forEach(id => {
     const el = $(id);
     if (el) el.addEventListener("input", () => { recalcAll(); renderProcedures(); });
   });
 
-  // fee schedule file upload
+  // Upload + persist fee schedule
   $("feeFile").addEventListener("change", async () => {
     const file = $("feeFile").files?.[0];
     if (!file) return;
@@ -478,9 +473,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     try{
       const text = await file.text();
       loadFeeScheduleFromCsv(text);
+      saveFeeScheduleCsv(text); // ✅ persist
       $("feeLoadedText").textContent = `${FEE_MAP.size} CPTs loaded`;
       renderFeePreview();
-      // If you already added procedures, refresh allowed values
       recalcAll();
       renderProcedures();
     } catch(e){
@@ -494,13 +489,25 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("qhFrom").value = today;
   $("qhTo").value = today;
 
-  // init totals + table
+  // ✅ AUTO-LOAD fee schedule from localStorage (this is what you were missing)
+  try{
+    const cached = loadFeeScheduleCsv();
+    if (cached){
+      loadFeeScheduleFromCsv(cached);
+      $("feeLoadedText").textContent = `${FEE_MAP.size} CPTs loaded (cached)`;
+      renderFeePreview();
+    } else {
+      $("feeLoadedText").textContent = "No fee schedule loaded";
+    }
+  } catch(e){
+    console.error(e);
+    $("feeLoadedText").textContent = "No fee schedule loaded";
+  }
+
   recalcAll();
   renderProcedures();
 
-  // load auth + history
-  try { await loadAuth(); }
-  catch(e){ console.error(e); }
+  try { await loadAuth(); } catch(e){ console.error(e); }
 
   try { await loadQuoteHistory(); }
   catch(e){
