@@ -229,3 +229,26 @@ select{
   color: var(--muted);
   padding: 16px 0 26px;
 }
+.kpi-grid{
+  display:grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap:12px;
+}
+@media (max-width: 900px){
+  .kpi-grid{ grid-template-columns: 1fr 1fr; }
+}
+.kpi{
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255,255,255,.02);
+}
+.kpi-label{
+  color: var(--muted);
+  font-size: 12px;
+}
+.kpi-value{
+  font-size: 20px;
+  font-weight: 800;
+  margin-top: 6px;
+}
