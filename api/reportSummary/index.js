@@ -1,12 +1,17 @@
+// api/reportSummary/index.js
 const { getUserFromSwa, jsonResponse, getClient } = require("../shared/table");
 
-function compact(ymd){ return String(ymd || "").replaceAll("-", ""); }
-function ymdFromPartition(pk){
+function compact(ymd) {
+  return String(ymd || "").replaceAll("-", "");
+}
+
+function ymdFromPartition(pk) {
   if (!pk || String(pk).length !== 8) return String(pk || "");
   const s = String(pk);
-  return `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`;
+  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
 }
-function addAgg(map, key, dep, due){
+
+function addAgg(map, key, dep, due) {
   const k = key || "(blank)";
   if (!map.has(k)) map.set(k, { key: k, quotes: 0, deposits: 0, due: 0 });
   const obj = map.get(k);
@@ -14,6 +19,7 @@ function addAgg(map, key, dep, due){
   obj.deposits += Number(dep || 0);
   obj.due += Number(due || 0);
 }
+
 module.exports = async function (context, req) {
   const user = getUserFromSwa(req);
   if (!user) return jsonResponse(context, 401, { error: "Not authenticated" });
@@ -23,7 +29,7 @@ module.exports = async function (context, req) {
   const clinicFilter = String(req.query.clinic || "").trim().toLowerCase();
   const providerFilter = String(req.query.provider || "").trim().toLowerCase();
 
-  try{
+  try {
     const client = getClient();
 
     let filter = "";
@@ -62,8 +68,8 @@ module.exports = async function (context, req) {
         date: ymdFromPartition(e.partitionKey),
         createdAt: e.createdAt,
         patientName: e.patientName,
-        provider: provider,
-        clinic: clinic,
+        provider,
+        clinic,
         createdBy: e.createdBy,
         recommendedDeposit: dep,
         estimatedOwes: due,
@@ -73,19 +79,30 @@ module.exports = async function (context, req) {
       if (exportItems.length > 10000) break;
     }
 
-    const toArray = (map, label) => Array.from(map.values()).map(v => {
-      const out = { quotes: v.quotes, deposits: v.deposits, due: v.due };
-      out[label] = v.key;
-      return out;
-    }).sort((a,b) => b.quotes - a.quotes);
+    const toArray = (map, label) =>
+      Array.from(map.values())
+        .map((v) => {
+          const out = { quotes: v.quotes, deposits: v.deposits, due: v.due };
+          out[label] = v.key;
+          return out;
+        })
+        .sort((a, b) => b.quotes - a.quotes);
 
     const byStaff = toArray(staffAgg, "staff");
     const byClinic = toArray(clinicAgg, "clinic");
     const byProvider = toArray(providerAgg, "provider");
-    const byDate = toArray(dateAgg, "date").sort((a,b) => String(a.date).localeCompare(String(b.date)));
+    const byDate = toArray(dateAgg, "date").sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
-    return jsonResponse(context, 200, { ok:true, summary, byStaff, byClinic, byProvider, byDate, exportItems });
-  } catch (err){
+    return jsonResponse(context, 200, {
+      ok: true,
+      summary,
+      byStaff,
+      byClinic,
+      byProvider,
+      byDate,
+      exportItems
+    });
+  } catch (err) {
     return jsonResponse(context, 500, { error: err.message || "Failed to build report" });
   }
 };
