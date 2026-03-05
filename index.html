@@ -3,16 +3,19 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Estimate Tool</title>
+  <title>NES Estimate Tool</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+
   <header class="topbar">
     <div class="brand">
-      <div class="brand-title">Estimate Tool</div>
-      <div class="brand-sub">CPT + Provider dropdowns restored</div>
+      <div class="brand-title">NES Estimate Tool</div>
+      <div class="brand-sub">CPT + Provider dropdowns (auto-scraped providers)</div>
     </div>
+
     <div class="actions">
+      <a class="btn" href="admin.html">Admin RCM Dashboard</a>
       <button id="addRowBtn" class="btn">Add Row</button>
       <button id="saveQuoteBtn" class="btn primary">Save Quote</button>
       <button id="clearBtn" class="btn danger">Clear</button>
@@ -21,12 +24,12 @@
 
   <main class="wrap">
     <section class="card">
-      <h2>Quote Details</h2>
+      <h2>Quote</h2>
 
       <div class="grid">
         <label>
           Patient Name
-          <input id="patientName" type="text" placeholder="e.g., John Doe" />
+          <input id="patientName" type="text" placeholder="optional" />
         </label>
         <label>
           Date
@@ -39,29 +42,23 @@
       </div>
 
       <div class="table-wrap">
-        <table class="table" id="quoteTable">
+        <table class="table">
           <thead>
             <tr>
-              <th style="width: 180px;">Provider</th>
-              <th style="width: 140px;">CPT</th>
+              <th style="width:220px">Provider</th>
+              <th style="width:150px">CPT</th>
               <th>Description</th>
-              <th style="width: 120px;">Fee</th>
-              <th style="width: 110px;">Qty</th>
-              <th style="width: 130px;">Line Total</th>
-              <th style="width: 80px;"></th>
+              <th style="width:120px">Fee</th>
+              <th style="width:90px">Qty</th>
+              <th style="width:140px">Line Total</th>
+              <th style="width:80px"></th>
             </tr>
           </thead>
-          <tbody id="rowsTbody">
-            <!-- rows injected -->
-          </tbody>
+          <tbody id="rows"></tbody>
         </table>
       </div>
 
       <div class="totals">
-        <div class="totals-row">
-          <div class="totals-label">Subtotal</div>
-          <div class="totals-value" id="subtotal">$0.00</div>
-        </div>
         <div class="totals-row">
           <div class="totals-label">Estimated Total</div>
           <div class="totals-value big" id="grandTotal">$0.00</div>
@@ -73,19 +70,17 @@
       <div class="history-header">
         <h2>Quote History</h2>
         <div class="actions">
+          <button id="refreshHistoryBtn" class="btn">Refresh</button>
           <button id="exportHistoryBtn" class="btn">Export CSV</button>
           <button id="clearHistoryBtn" class="btn danger">Clear History</button>
         </div>
       </div>
-
-      <div id="historyList" class="history">
-        <!-- history injected -->
-      </div>
+      <div id="history" class="history"></div>
     </section>
   </main>
 
   <footer class="footer">
-    <small>Stored locally in your browser (localStorage).</small>
+    <small>Uses API when available. Falls back to browser storage if APIs are missing.</small>
   </footer>
 
   <script src="app.js"></script>
