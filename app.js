@@ -132,7 +132,7 @@ function parseCSV(text){
   const idxAllowed = pickBestAllowedIndex(headersNorm, rows);
 
   if (idxCpt === -1 || idxAllowed === -1){
-    throw new Error("CSV must include CPT and Allowed columns (Allowed/AllowedAmount/Allowable).");
+    throw new Error("CSV must include CPT and an Allowed column (Allowed/AllowedAmount/Allowable).");
   }
 
   const out = [];
@@ -392,7 +392,7 @@ async function hydrateUserUI(){
 }
 
 /* =========================
-   API
+   API WRAPPERS
    ========================= */
 async function apiGet(path){
   const r = await fetch(path, { credentials:"include" });
@@ -413,7 +413,7 @@ async function apiPost(path, body){
 }
 
 /* =========================
-   QUOTE SAVE/LOAD
+   QUOTE SAVE/LOAD (ROUTES FIXED)
    ========================= */
 function buildQuotePayload(){
   return {
@@ -441,12 +441,21 @@ function buildQuotePayload(){
     }
   };
 }
+
 async function saveCurrentQuote(){
   const payload = buildQuotePayload();
-  const res = await apiPost("/api/quotes", payload);
+  // ✅ your function endpoint
+  const res = await apiPost("/api/createQuote", payload);
   alert(`Saved quote: ${res.quoteId}`);
   await loadQuoteHistory();
 }
+
+async function loadQuoteByKeys(partitionKey, quoteId){
+  // ✅ your function endpoint uses query params
+  const qs = new URLSearchParams({ partitionKey, quoteId });
+  return await apiGet(`/api/getQuote?${qs.toString()}`);
+}
+
 function loadQuoteIntoUI(payload){
   if (!payload) return;
 
@@ -472,7 +481,7 @@ function loadQuoteIntoUI(payload){
 }
 
 /* =========================
-   HISTORY
+   HISTORY (ROUTES FIXED)
    ========================= */
 function ymd(d){
   const yyyy = d.getFullYear();
@@ -516,6 +525,7 @@ function buildHistoryQuery(){
 
   return params.toString();
 }
+
 async function loadQuoteHistory(){
   const tbody = $("historyTbody");
   if (!tbody) return;
@@ -523,7 +533,8 @@ async function loadQuoteHistory(){
   tbody.innerHTML = `<tr><td colspan="8">Loading…</td></tr>`;
   try{
     const qs = buildHistoryQuery();
-    const res = await apiGet(`/api/quotes?${qs}`);
+    // ✅ your function endpoint
+    const res = await apiGet(`/api/listQuotes?${qs}`);
     const items = res.items || [];
     state.lastHistoryItems = items;
 
@@ -552,7 +563,7 @@ async function loadQuoteHistory(){
       btn.addEventListener("click", async () => {
         const part = btn.getAttribute("data-part");
         const id = btn.getAttribute("data-id");
-        const q = await apiGet(`/api/quotes/${part}/${id}`);
+        const q = await loadQuoteByKeys(part, id);
         loadQuoteIntoUI(q.payload);
         window.scrollTo({ top: 0, behavior: "smooth" });
       });
@@ -561,6 +572,7 @@ async function loadQuoteHistory(){
     tbody.innerHTML = `<tr><td colspan="8">Error: ${escapeHtml(err.message || String(err))}</td></tr>`;
   }
 }
+
 function exportHistoryCsv(){
   const items = state.lastHistoryItems || [];
   const headers = ["createdAt","patientName","provider","clinic","createdBy","recommendedDeposit","estimatedOwes","quoteId","partitionKey"];
@@ -598,7 +610,6 @@ function drawBarChart(canvasId, items, labelKey, valueKey, topN=10){
   const labels = data.map(x => String(x[labelKey] || ""));
   const values = data.map(x => Number(x[valueKey] || 0));
 
-  // clear
   ctx.clearRect(0,0,c.width,c.height);
 
   const w = c.width;
@@ -606,8 +617,6 @@ function drawBarChart(canvasId, items, labelKey, valueKey, topN=10){
   const pad = 36;
   const maxV = Math.max(...values, 1);
 
-  // axes
-  ctx.globalAlpha = 1;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(pad, pad/2);
@@ -625,20 +634,16 @@ function drawBarChart(canvasId, items, labelKey, valueKey, topN=10){
 
     ctx.fillRect(x, y, bw, bh);
 
-    // label (trim)
     const lbl = labels[i].length > 14 ? labels[i].slice(0,14)+"…" : labels[i];
     ctx.save();
     ctx.translate(x + bw/2, h - pad + 12);
     ctx.rotate(-0.35);
     ctx.textAlign = "center";
-    ctx.font = "12px Montserrat, Arial";
+    ctx.font = "12px Arial";
     ctx.fillText(lbl, 0, 0);
     ctx.restore();
   }
-
-  // title/value key is handled by HTML label
 }
-
 function drawLineChart(canvasId, items, xKey, yKey){
   const c = $(canvasId);
   if (!c) return;
@@ -656,7 +661,6 @@ function drawLineChart(canvasId, items, xKey, yKey){
 
   const maxY = Math.max(...ys, 1);
 
-  // axes
   ctx.beginPath();
   ctx.moveTo(pad, pad/2);
   ctx.lineTo(pad, h - pad);
@@ -667,7 +671,6 @@ function drawLineChart(canvasId, items, xKey, yKey){
 
   const stepX = (w - pad*1.5) / (ys.length - 1);
 
-  // line
   ctx.beginPath();
   for (let i=0;i<ys.length;i++){
     const x = pad + i*stepX;
@@ -677,7 +680,6 @@ function drawLineChart(canvasId, items, xKey, yKey){
   }
   ctx.stroke();
 
-  // dots + a few labels
   for (let i=0;i<ys.length;i++){
     const x = pad + i*stepX;
     const y = (h - pad) - ((h - pad*1.5) * (ys[i] / maxY));
@@ -687,7 +689,7 @@ function drawLineChart(canvasId, items, xKey, yKey){
 
     if (i===0 || i===ys.length-1 || (ys.length>6 && i%Math.ceil(ys.length/6)===0)){
       const lbl = xs[i];
-      ctx.font = "12px Montserrat, Arial";
+      ctx.font = "12px Arial";
       ctx.textAlign = "center";
       ctx.fillText(lbl, x, h - pad + 14);
     }
@@ -695,7 +697,7 @@ function drawLineChart(canvasId, items, xKey, yKey){
 }
 
 /* =========================
-   ADMIN DASHBOARD
+   ADMIN DASHBOARD (ROUTE FIXED)
    ========================= */
 function setAdminRangeToday(){
   const d = new Date();
@@ -744,6 +746,7 @@ function renderAggTable(tbodyId, items, labelKey){
     tbody.appendChild(tr);
   }
 }
+
 async function loadAdminReport(){
   if (!$("sumQuotes")) return;
 
@@ -751,9 +754,11 @@ async function loadAdminReport(){
   $("sumDeposits").textContent = "…";
   $("sumDue").textContent = "…";
 
+  const qs = buildAdminQuery();
+
   try{
-    const qs = buildAdminQuery();
-    const res = await apiGet(`/api/reports/summary?${qs}`);
+    // ✅ your function endpoint
+    const res = await apiGet(`/api/reportSummary?${qs}`);
 
     $("sumQuotes").textContent = String(res.summary?.quotes || 0);
     $("sumDeposits").textContent = money(Number(res.summary?.deposits || 0));
@@ -766,7 +771,6 @@ async function loadAdminReport(){
 
     state.adminLastExport = res.exportItems || [];
 
-    // Charts
     drawBarChart("chartDepositsByProvider", res.byProvider, "provider", "deposits", 10);
     drawBarChart("chartQuotesByStaff", res.byStaff, "staff", "quotes", 10);
     drawLineChart("chartDepositsByDate", res.byDate, "date", "deposits");
@@ -775,6 +779,7 @@ async function loadAdminReport(){
     alert(`Admin report error: ${err.message || err}`);
   }
 }
+
 function exportAdminCsv(){
   const items = state.adminLastExport || [];
   const headers = ["date","createdAt","patientName","provider","clinic","createdBy","recommendedDeposit","estimatedOwes","quoteId"];
@@ -867,7 +872,6 @@ function initButtons(){
     $(id)?.addEventListener("change", onHistChange);
   });
 
-  // admin
   $("btnAdminToday")?.addEventListener("click", async () => { setAdminRangeToday(); await loadAdminReport(); });
   $("btnAdminThisWeek")?.addEventListener("click", async () => { setAdminRangeThisWeek(); await loadAdminReport(); });
   $("btnAdminRefresh")?.addEventListener("click", () => loadAdminReport());
