@@ -9,8 +9,8 @@ module.exports = async function (context, req) {
   const quoteId = uuidv4();
 
   const now = new Date();
-  const partitionKey = ymdCompact(now); // YYYYMMDD
-  const rowKey = `${now.getTime()}_${quoteId}`; // sort newest
+  const partitionKey = ymdCompact(now);
+  const rowKey = `${now.getTime()}_${quoteId}`;
 
   const createdAt = isoNow();
   const createdBy = user.userDetails || "unknown";
@@ -18,6 +18,7 @@ module.exports = async function (context, req) {
   const totals = payload.totals || {};
   const patientName = String(payload.patientName || "").slice(0, 200);
   const clinic = String(payload.clinic || "").slice(0, 200);
+  const provider = String(payload.provider || "").slice(0, 200);
 
   const entity = {
     partitionKey,
@@ -29,6 +30,7 @@ module.exports = async function (context, req) {
 
     patientName,
     clinic,
+    provider,
 
     recommendedDeposit: Number(totals.recommendedDeposit || 0),
     estimatedOwes: Number(totals.estimatedOwes || 0),
