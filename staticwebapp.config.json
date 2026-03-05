@@ -1,6 +1,14 @@
 {
   "routes": [
     {
+      "route": "/admin.html",
+      "allowedRoles": ["admin"]
+    },
+    {
+      "route": "/api/reports/*",
+      "allowedRoles": ["admin"]
+    },
+    {
       "route": "/*",
       "allowedRoles": ["authenticated"]
     }
@@ -9,6 +17,9 @@
     "401": {
       "statusCode": 302,
       "redirect": "/.auth/login/aad"
+    },
+    "403": {
+      "rewrite": "/403.html"
     }
   }
 }
