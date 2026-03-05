@@ -1,10 +1,14 @@
 const { getUserFromSwa, jsonResponse, getClient } = require("../shared/table");
 
-function compact(ymd){
+function compact(ymd) {
   return String(ymd || "").replaceAll("-", "");
 }
-function localTimeString(iso){
-  try{ return new Date(iso).toLocaleString(); } catch { return iso || ""; }
+function localTimeString(iso) {
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso || "";
+  }
 }
 
 module.exports = async function (context, req) {
@@ -19,7 +23,7 @@ module.exports = async function (context, req) {
   const provider = String(req.query.provider || "").trim().toLowerCase();
   const q = String(req.query.q || "").trim().toLowerCase();
 
-  try{
+  try {
     const client = getClient();
 
     let filter = "";
@@ -52,11 +56,11 @@ module.exports = async function (context, req) {
     if (provider) filtered = filtered.filter(x => String(x.provider || "").toLowerCase().includes(provider));
     if (q) filtered = filtered.filter(x => String(x.patientName || "").toLowerCase().includes(q));
 
-    filtered.sort((a,b) => String(b.rowKey || "").localeCompare(String(a.rowKey || "")));
+    filtered.sort((a, b) => String(b.rowKey || "").localeCompare(String(a.rowKey || "")));
     filtered = filtered.slice(0, take);
 
-    return jsonResponse(context, 200, { ok:true, items: filtered });
-  } catch (err){
+    return jsonResponse(context, 200, { ok: true, items: filtered });
+  } catch (err) {
     return jsonResponse(context, 500, { error: err.message || "Failed to list quotes" });
   }
 };
