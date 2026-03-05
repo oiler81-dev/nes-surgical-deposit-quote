@@ -5,8 +5,8 @@
       "type": "httpTrigger",
       "direction": "in",
       "name": "req",
-      "methods": ["post"],
-      "route": "quotes"
+      "methods": ["get"],
+      "route": "quotes/{partitionKey}/{quoteId}"
     },
     {
       "type": "http",
