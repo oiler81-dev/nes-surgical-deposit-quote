@@ -1,14 +1,8 @@
-// app.js (FIXED: chooses the correct Allowed column by scoring candidates)
-// - Robust CSV parsing (quoted commas)
-// - Normalizes CPTs (27685.0 -> 27685)
-// - Parses money with $, commas, parentheses
-// - Auto-selects the "Allowed" column that actually has numeric values
-// - Warn banner if fee schedule missing or CPT not found
-
 const state = {
-  feeMap: new Map(),        // CPT -> { desc, allowed }
+  feeMap: new Map(),
   rows: [],
-  maxRows: 10
+  maxRows: 10,
+  lastHistoryItems: [] // for export
 };
 
 const $ = (id) => document.getElementById(id);
@@ -17,60 +11,40 @@ function money(n){
   const v = Number.isFinite(n) ? n : 0;
   return v.toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
-
 function pct(n){
   const v = Number.isFinite(n) ? n : 0;
   return (v * 100).toFixed(0) + "%";
 }
-
 function numVal(el){
+  if (!el) return 0;
   const v = parseFloat(String(el.value || "").replace(/,/g,""));
   return Number.isFinite(v) ? v : 0;
 }
-
 function normalizeHeader(h){
-  return String(h || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "")
-    .replace(/[_-]/g, "");
+  return String(h || "").trim().toLowerCase().replace(/\s+/g,"").replace(/[_-]/g,"");
 }
-
 function normalizeCpt(raw){
   let s = String(raw ?? "").trim();
   if (!s) return "";
-  s = s.replace(/^'+|'+$/g, "");
-  s = s.replace(/"/g, "");
+  s = s.replace(/^'+|'+$/g, "").replace(/"/g,"");
   if (/^\d+(\.\d+)?$/.test(s)) s = String(parseInt(s, 10));
   return s.trim();
 }
-
 function parseMoney(raw){
-  // Handles: "$1,234.56", "1,234.56", "(1,234.56)", "1234.56", "—", ""
   let s = String(raw ?? "").trim();
   if (!s) return 0;
-
-  // Normalize weird spaces (non-breaking, narrow no-break, etc.)
   s = s.replace(/[\u00A0\u202F\u2007]/g, " ").trim();
-
   let negative = false;
   if (s.startsWith("(") && s.endsWith(")")){
     negative = true;
-    s = s.slice(1, -1);
+    s = s.slice(1,-1);
   }
-
-  // Strip currency symbols and separators
-  s = s.replace(/[$,]/g, "");
-  s = s.replace(/\s/g, "");
-
-  // If it's something like "—" or "N/A"
+  s = s.replace(/[$,]/g,"").replace(/\s/g,"");
   if (!/[0-9]/.test(s)) return 0;
-
   const v = parseFloat(s);
   if (!Number.isFinite(v)) return 0;
   return negative ? -v : v;
 }
-
 function escapeHtml(s){
   return String(s || "")
     .replaceAll("&","&amp;")
@@ -79,149 +53,67 @@ function escapeHtml(s){
     .replaceAll('"',"&quot;")
     .replaceAll("'","&#039;");
 }
-
 function splitCSVLine(line){
   const out = [];
   let cur = "";
   let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++){
+  for (let i=0;i<line.length;i++){
     const ch = line[i];
-
     if (ch === '"'){
-      if (inQuotes && line[i + 1] === '"'){
-        cur += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
+      if (inQuotes && line[i+1] === '"'){ cur += '"'; i++; }
+      else inQuotes = !inQuotes;
       continue;
     }
-
     if (ch === "," && !inQuotes){
-      out.push(cur);
-      cur = "";
-      continue;
+      out.push(cur); cur=""; continue;
     }
-
     cur += ch;
   }
-
   out.push(cur);
   return out.map(x => x.trim());
 }
-
-function ensureBanner(){
-  let el = document.getElementById("banner");
-  if (el) return el;
-
-  const card = document.querySelector(".card"); // Fee Schedule card
-  el = document.createElement("div");
-  el.id = "banner";
-  el.style.marginTop = "12px";
-  el.style.padding = "10px 12px";
-  el.style.borderRadius = "12px";
-  el.style.border = "1px solid rgba(16,56,96,.20)";
-  el.style.background = "rgba(16,56,96,.05)";
-  el.style.color = "#103860";
-  el.style.fontWeight = "700";
-  el.style.display = "none";
-  card.appendChild(el);
-  return el;
-}
-
-function showBanner(msg, type="info"){
-  const el = ensureBanner();
-  el.textContent = msg;
-  el.style.display = "block";
-
-  if (type === "warn"){
-    el.style.border = "1px solid rgba(180,83,9,.35)";
-    el.style.background = "rgba(180,83,9,.08)";
-    el.style.color = "#7c2d12";
-  } else {
-    el.style.border = "1px solid rgba(16,56,96,.20)";
-    el.style.background = "rgba(16,56,96,.05)";
-    el.style.color = "#103860";
-  }
-}
-
-function hideBanner(){
-  const el = document.getElementById("banner");
-  if (el) el.style.display = "none";
-}
-
 function pickBestAllowedIndex(headersNorm, rows){
-  // Find all columns whose header looks like "allowed"
   const candidates = [];
-  for (let i = 0; i < headersNorm.length; i++){
+  for (let i=0;i<headersNorm.length;i++){
     const h = headersNorm[i];
-    if (
-      h.includes("allowed") ||
-      h.includes("allowable") ||
-      h.includes("allowedamt") ||
-      h.includes("allowedamount") ||
-      h.includes("allowedfee")
-    ){
-      candidates.push(i);
-    }
+    if (h.includes("allowed") || h.includes("allowable")) candidates.push(i);
   }
-
   if (candidates.length === 0) return -1;
   if (candidates.length === 1) return candidates[0];
 
-  // Score each candidate by how many numeric values it has (and total magnitude)
   const sampleN = Math.min(rows.length, 40);
   let bestIdx = candidates[0];
   let bestScore = -1;
 
   for (const idx of candidates){
-    let numericCount = 0;
-    let nonEmptyCount = 0;
-    let magnitude = 0;
-
-    for (let r = 0; r < sampleN; r++){
+    let numericCount=0, nonEmptyCount=0, magnitude=0;
+    for (let r=0;r<sampleN;r++){
       const val = rows[r][idx];
       const s = String(val ?? "").trim();
       if (s) nonEmptyCount++;
-
       const m = parseMoney(val);
       if (Number.isFinite(m) && m !== 0){
         numericCount++;
         magnitude += Math.abs(m);
       }
     }
-
-    // Weighted score: numeric count most important, then non-empty, then magnitude
     const score = (numericCount * 1000000) + (nonEmptyCount * 1000) + magnitude;
-
-    if (score > bestScore){
-      bestScore = score;
-      bestIdx = idx;
-    }
+    if (score > bestScore){ bestScore = score; bestIdx = idx; }
   }
-
   return bestIdx;
 }
-
 function parseCSV(text){
-  const lines = text
-    .replace(/\uFEFF/g, "")
-    .split(/\r?\n/)
-    .filter(l => l.trim().length > 0);
-
+  const lines = text.replace(/\uFEFF/g,"").split(/\r?\n/).filter(l => l.trim().length>0);
   if (lines.length < 2) return [];
 
   const headersRaw = splitCSVLine(lines[0]);
   const headersNorm = headersRaw.map(normalizeHeader);
 
   const rows = [];
-  for (let i = 1; i < lines.length; i++){
-    rows.push(splitCSVLine(lines[i]));
-  }
+  for (let i=1;i<lines.length;i++) rows.push(splitCSVLine(lines[i]));
 
   const findHeaderIndex = (candidates) => {
-    for (let i = 0; i < headersNorm.length; i++){
+    for (let i=0;i<headersNorm.length;i++){
       if (candidates.includes(headersNorm[i])) return i;
     }
     return -1;
@@ -229,67 +121,44 @@ function parseCSV(text){
 
   const idxCpt = findHeaderIndex(["cpt","cptcode","procedurecode","code"]);
   const idxDesc = findHeaderIndex(["description","cptdescription","procedurename","name"]);
-
-  // Instead of a single allowed index, pick best allowed-like column
   const idxAllowed = pickBestAllowedIndex(headersNorm, rows);
 
   if (idxCpt === -1 || idxAllowed === -1){
-    throw new Error(
-      "CSV must include CPT and Allowed columns. " +
-      "Make sure there is a CPT column and an Allowed/AllowedAmount/Allowable column."
-    );
+    throw new Error("CSV must include CPT and Allowed columns (Allowed/AllowedAmount/Allowable).");
   }
 
   const out = [];
   for (const cols of rows){
     const cpt = normalizeCpt(cols[idxCpt]);
     if (!cpt) continue;
-
     const desc = idxDesc !== -1 ? String(cols[idxDesc] || "").trim() : "";
     const allowed = parseMoney(cols[idxAllowed]);
-
     out.push({ cpt, desc, allowed });
   }
-
-  // If allowed values are still all zero, tell them exactly what happened
-  const nonZero = out.filter(x => x.allowed !== 0).length;
-  if (out.length > 0 && nonZero === 0){
-    showBanner(
-      "Fee schedule loaded, but Allowed amounts are still all $0.00. " +
-      "Your CSV likely stores allowed amounts in a non-standard format (or another column not labeled 'Allowed').",
-      "warn"
-    );
-  }
-
   return out;
 }
 
-function loadFeeSchedule(items){
-  state.feeMap.clear();
-  for (const it of items){
-    state.feeMap.set(it.cpt, { desc: it.desc, allowed: it.allowed });
+function initRows(){
+  state.rows = [];
+  for (let i=0;i<state.maxRows;i++){
+    state.rows.push({
+      idx:i+1,cpt:"",desc:"",qty:1,
+      allowed:0,adjPct:0,adjAllowed:0,lineTotal:0,notFound:false
+    });
   }
-
-  if (state.feeMap.size === 0){
-    showBanner("Fee schedule loaded, but 0 CPTs were detected. Check your CSV values.", "warn");
-  } else {
-    hideBanner();
-  }
-
-  renderFeePreview();
-  renderCptList();
-  recalcAll();
 }
 
 function renderFeePreview(){
+  if (!$("feeCount")) return;
   $("feeCount").textContent = String(state.feeMap.size);
-  const tbody = $("feePreview").querySelector("tbody");
+
+  const table = $("feePreview");
+  if (!table) return;
+
+  const tbody = table.querySelector("tbody");
   tbody.innerHTML = "";
 
-  const entries = Array.from(state.feeMap.entries())
-    .slice(0, 50)
-    .map(([cpt, v]) => ({ cpt, ...v }));
-
+  const entries = Array.from(state.feeMap.entries()).slice(0,50).map(([cpt,v]) => ({cpt,...v}));
   for (const e of entries){
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -303,8 +172,9 @@ function renderFeePreview(){
 
 function renderCptList(){
   const dl = $("cptList");
+  if (!dl) return;
   dl.innerHTML = "";
-  for (const [cpt, v] of state.feeMap.entries()){
+  for (const [cpt,v] of state.feeMap.entries()){
     const opt = document.createElement("option");
     opt.value = cpt;
     opt.label = v.desc || "";
@@ -312,34 +182,28 @@ function renderCptList(){
   }
 }
 
-function initRows(){
-  state.rows = [];
-  for (let i=0; i<state.maxRows; i++){
-    state.rows.push({
-      idx: i+1,
-      cpt: "",
-      desc: "",
-      qty: 1,
-      allowed: 0,
-      adjPct: 0,
-      adjAllowed: 0,
-      lineTotal: 0,
-      notFound: false
-    });
+function loadFeeSchedule(items){
+  state.feeMap.clear();
+  for (const it of items){
+    state.feeMap.set(it.cpt, { desc: it.desc, allowed: it.allowed });
   }
+  renderFeePreview();
+  renderCptList();
+  recalcAll();
 }
 
 function renderProcTable(){
   const tbody = $("procTbody");
-  tbody.innerHTML = "";
+  if (!tbody) return;
 
-  state.rows.forEach((r, i) => {
+  tbody.innerHTML = "";
+  state.rows.forEach((r,i) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${r.idx}</td>
-      <td><input data-row="${i}" data-field="cpt" list="cptList" placeholder="e.g. 29881" /></td>
+      <td><input data-row="${i}" data-field="cpt" list="cptList" placeholder="e.g. 29881" value="${escapeHtml(r.cpt)}" /></td>
       <td data-row="${i}" data-out="desc"></td>
-      <td class="num"><input data-row="${i}" data-field="qty" type="number" min="1" step="1" value="1" /></td>
+      <td class="num"><input data-row="${i}" data-field="qty" type="number" min="1" step="1" value="${r.qty}" /></td>
       <td class="num" data-row="${i}" data-out="allowed">$0.00</td>
       <td class="num" data-row="${i}" data-out="adjPct">—</td>
       <td class="num" data-row="${i}" data-out="adjAllowed">$0.00</td>
@@ -362,94 +226,20 @@ function onProcInput(e){
   const row = state.rows[rowIdx];
   if (!row) return;
 
-  if (field === "cpt"){
-    row.cpt = normalizeCpt(v);
-  } else if (field === "qty"){
-    const q = parseInt(v, 10);
-    row.qty = Number.isFinite(q) && q > 0 ? q : 1;
+  if (field === "cpt") row.cpt = normalizeCpt(v);
+  if (field === "qty"){
+    const q = parseInt(v,10);
+    row.qty = Number.isFinite(q) && q>0 ? q : 1;
   }
-
   recalcAll();
-}
-
-function recalcAll(){
-  let anyMissing = false;
-
-  for (const r of state.rows){
-    const cpt = normalizeCpt(r.cpt);
-    r.cpt = cpt;
-
-    if (!cpt){
-      r.desc = "";
-      r.allowed = 0;
-      r.notFound = false;
-      continue;
-    }
-
-    const hit = state.feeMap.get(cpt);
-    r.desc = hit ? hit.desc : "";
-    r.allowed = hit ? hit.allowed : 0;
-    r.notFound = !hit;
-    if (r.notFound) anyMissing = true;
-  }
-
-  if (state.feeMap.size === 0){
-    showBanner("No fee schedule loaded yet. Upload a CSV so Allowed Amounts populate.", "warn");
-  } else if (anyMissing){
-    showBanner("Some CPTs were not found in the fee schedule. Those lines will show $0.00 allowed.", "warn");
-  } else {
-    hideBanner();
-  }
-
-  let seen = 0;
-  for (const r of state.rows){
-    if (r.cpt){
-      seen += 1;
-      r.adjPct = (seen === 1) ? 1.0 : 0.5;
-    } else {
-      r.adjPct = 0;
-    }
-    r.adjAllowed = (r.adjPct > 0) ? (r.allowed * r.adjPct) : 0;
-    r.lineTotal = r.qty * r.adjAllowed;
-  }
-
-  const totalAllowed = state.rows.reduce((sum, r) => sum + (r.lineTotal || 0), 0);
-
-  const copay = numVal($("copay"));
-  const dedRem = numVal($("dedRem"));
-  const coinsPct = numVal($("coinsPct"));
-  const oopRem = numVal($("oopRem"));
-
-  const dedApplied = Math.min(totalAllowed, Math.max(dedRem, 0));
-  const coinsBase = Math.max(totalAllowed - dedApplied, 0);
-  const coinsAmt = coinsBase * Math.max(coinsPct, 0);
-  const rawResp = Math.max(copay, 0) + dedApplied + coinsAmt;
-  const oopCapped = Math.min(rawResp, Math.max(oopRem, 0));
-
-  const estOwes = oopCapped;
-  const recDeposit = estOwes;
-
-  renderProcOutputs();
-
-  $("totalAllowed").textContent = money(totalAllowed);
-  $("dedApplied").textContent = money(dedApplied);
-  $("coinsAmt").textContent = money(coinsAmt);
-  $("copayOut").textContent = money(copay);
-  $("estOwes").textContent = money(estOwes);
-  $("recDeposit").textContent = money(recDeposit);
-
-  renderPrintable({
-    totalAllowed, dedApplied, coinsAmt, copay,
-    estOwes, recDeposit, dedRem, coinsPct, oopRem
-  });
 }
 
 function renderProcOutputs(){
   const tbody = $("procTbody");
+  if (!tbody) return;
 
-  for (let i=0; i<state.rows.length; i++){
+  for (let i=0;i<state.rows.length;i++){
     const r = state.rows[i];
-
     const descCell = tbody.querySelector(`[data-row="${i}"][data-out="desc"]`);
     const allowedCell = tbody.querySelector(`[data-row="${i}"][data-out="allowed"]`);
     const adjPctCell = tbody.querySelector(`[data-row="${i}"][data-out="adjPct"]`);
@@ -461,20 +251,23 @@ function renderProcOutputs(){
       descCell.style.color = r.notFound ? "#b45309" : "";
       descCell.style.fontWeight = r.notFound ? "800" : "";
     }
-    if (allowedCell) allowedCell.textContent = money(r.allowed || 0);
+    if (allowedCell) allowedCell.textContent = money(r.allowed||0);
     if (adjPctCell) adjPctCell.textContent = r.adjPct ? pct(r.adjPct) : "—";
-    if (adjAllowedCell) adjAllowedCell.textContent = money(r.adjAllowed || 0);
-    if (lineTotalCell) lineTotalCell.textContent = money(r.lineTotal || 0);
+    if (adjAllowedCell) adjAllowedCell.textContent = money(r.adjAllowed||0);
+    if (lineTotalCell) lineTotalCell.textContent = money(r.lineTotal||0);
   }
 }
 
 function renderPrintable(calc){
+  if (!$("printDate")) return;
+
   const today = new Date();
   $("printDate").textContent = today.toLocaleDateString();
 
-  $("printPatient").textContent = $("patientName").value || "";
-  $("printInsurance").textContent = $("insurancePlan").value || "";
-  $("printPreparedBy").textContent = $("preparedBy").value || "";
+  $("printPatient").textContent = $("patientName")?.value || "";
+  $("printInsurance").textContent = $("insurancePlan")?.value || "";
+  $("printPreparedBy").textContent = $("preparedBy")?.value || "";
+  $("printClinic").textContent = $("clinic")?.value || "";
 
   $("printEstOwes").textContent = money(calc.estOwes);
   $("printRecDeposit").textContent = money(calc.recDeposit);
@@ -498,36 +291,424 @@ function renderPrintable(calc){
       <td>${escapeHtml(r.cpt)}</td>
       <td>${escapeHtml(r.desc || (r.notFound ? "CPT not found in fee schedule" : ""))}</td>
       <td class="num">${r.qty}</td>
-      <td class="num">${money(r.adjAllowed || 0)}</td>
-      <td class="num">${money(r.lineTotal || 0)}</td>
+      <td class="num">${money(r.adjAllowed||0)}</td>
+      <td class="num">${money(r.lineTotal||0)}</td>
     `;
     tbody.appendChild(tr);
   }
 }
 
-async function loadSampleFeeSchedule(){
-  try{
-    const res = await fetch("feeSchedule.sample.csv", { cache: "no-store" });
-    if (!res.ok) return;
-    const text = await res.text();
-    const items = parseCSV(text);
-    loadFeeSchedule(items);
-  } catch {}
+function recalcAll(){
+  // enrich from fee schedule
+  for (const r of state.rows){
+    const cpt = normalizeCpt(r.cpt);
+    r.cpt = cpt;
+    if (!cpt){ r.desc=""; r.allowed=0; r.notFound=false; continue; }
+
+    const hit = state.feeMap.get(cpt);
+    r.desc = hit ? hit.desc : "";
+    r.allowed = hit ? hit.allowed : 0;
+    r.notFound = !hit;
+  }
+
+  // multi-proc
+  let seen = 0;
+  for (const r of state.rows){
+    if (r.cpt){
+      seen += 1;
+      r.adjPct = (seen === 1) ? 1.0 : 0.5;
+    } else r.adjPct = 0;
+    r.adjAllowed = r.adjPct ? (r.allowed * r.adjPct) : 0;
+    r.lineTotal = (r.qty || 1) * r.adjAllowed;
+  }
+
+  const totalAllowed = state.rows.reduce((sum,r) => sum + (r.lineTotal || 0), 0);
+
+  const copay = numVal($("copay"));
+  const dedRem = numVal($("dedRem"));
+  const coinsPct = numVal($("coinsPct"));
+  const oopRem = numVal($("oopRem"));
+
+  const dedApplied = Math.min(totalAllowed, Math.max(dedRem, 0));
+  const coinsBase = Math.max(totalAllowed - dedApplied, 0);
+  const coinsAmt = coinsBase * Math.max(coinsPct, 0);
+  const rawResp = Math.max(copay, 0) + dedApplied + coinsAmt;
+  const oopCapped = Math.min(rawResp, Math.max(oopRem, 0));
+
+  const estOwes = oopCapped;
+  const recDeposit = estOwes;
+
+  renderProcOutputs();
+
+  if ($("totalAllowed")) $("totalAllowed").textContent = money(totalAllowed);
+  if ($("dedApplied")) $("dedApplied").textContent = money(dedApplied);
+  if ($("coinsAmt")) $("coinsAmt").textContent = money(coinsAmt);
+  if ($("copayOut")) $("copayOut").textContent = money(copay);
+  if ($("estOwes")) $("estOwes").textContent = money(estOwes);
+  if ($("recDeposit")) $("recDeposit").textContent = money(recDeposit);
+
+  renderPrintable({ totalAllowed, dedApplied, coinsAmt, copay, estOwes, recDeposit, dedRem, coinsPct, oopRem });
 }
 
+/* =========================
+   AUTH + ROLE UI
+   ========================= */
+async function getMe(){
+  try{
+    const r = await fetch("/.auth/me", { credentials: "include" });
+    if (!r.ok) return null;
+    const data = await r.json();
+    return data?.clientPrincipal || null;
+  } catch {
+    return null;
+  }
+}
+
+function hasRole(me, role){
+  const roles = me?.userRoles || [];
+  return roles.includes(role);
+}
+
+async function hydrateUserUI(){
+  const me = await getMe();
+  const who = $("whoAmI") || $("adminWhoAmI");
+  if (who){
+    who.textContent = me ? `Signed in: ${me.userDetails}` : "Signed in";
+  }
+
+  if ($("preparedBy") && me && !$("preparedBy").value){
+    $("preparedBy").value = me.userDetails || "";
+  }
+
+  const adminLink = $("adminLink");
+  if (adminLink){
+    adminLink.style.display = (me && hasRole(me, "admin")) ? "inline-block" : "none";
+  }
+}
+
+/* =========================
+   API HELPERS
+   ========================= */
+async function apiGet(path){
+  const r = await fetch(path, { credentials: "include" });
+  const text = await r.text();
+  if (!r.ok) throw new Error(text || r.statusText);
+  return text ? JSON.parse(text) : {};
+}
+async function apiPost(path, body){
+  const r = await fetch(path, {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    credentials:"include",
+    body: JSON.stringify(body)
+  });
+  const text = await r.text();
+  if (!r.ok) throw new Error(text || r.statusText);
+  return text ? JSON.parse(text) : {};
+}
+
+/* =========================
+   QUOTE SAVE + LOAD
+   ========================= */
+function getNumberFromCurrencyText(s){
+  return parseMoney(String(s || ""));
+}
+
+function buildQuotePayload(){
+  return {
+    patientName: $("patientName")?.value || "",
+    insurancePlan: $("insurancePlan")?.value || "",
+    preparedBy: $("preparedBy")?.value || "",
+    clinic: $("clinic")?.value || "",
+    copay: numVal($("copay")),
+    deductibleRemaining: numVal($("dedRem")),
+    coinsurancePct: numVal($("coinsPct")),
+    oopMaxRemaining: numVal($("oopRem")),
+    procedures: state.rows.filter(r => r.cpt).map(r => ({
+      cpt: r.cpt,
+      desc: r.desc,
+      qty: r.qty,
+      allowed: r.allowed,
+      adjPct: r.adjPct,
+      adjAllowed: r.adjAllowed,
+      lineTotal: r.lineTotal
+    })),
+    totals: {
+      totalAllowedAdjusted: getNumberFromCurrencyText($("totalAllowed")?.textContent),
+      deductibleApplied: getNumberFromCurrencyText($("dedApplied")?.textContent),
+      coinsuranceAmount: getNumberFromCurrencyText($("coinsAmt")?.textContent),
+      copay: getNumberFromCurrencyText($("copayOut")?.textContent),
+      estimatedOwes: getNumberFromCurrencyText($("estOwes")?.textContent),
+      recommendedDeposit: getNumberFromCurrencyText($("recDeposit")?.textContent)
+    }
+  };
+}
+
+async function saveCurrentQuote(){
+  const payload = buildQuotePayload();
+  const res = await apiPost("/api/quotes", payload);
+  alert(`Saved quote: ${res.quoteId}`);
+  await loadQuoteHistory();
+}
+
+function loadQuoteIntoUI(payload){
+  if (!payload) return;
+
+  if ($("patientName")) $("patientName").value = payload.patientName || "";
+  if ($("insurancePlan")) $("insurancePlan").value = payload.insurancePlan || "";
+  if ($("preparedBy")) $("preparedBy").value = payload.preparedBy || "";
+  if ($("clinic")) $("clinic").value = payload.clinic || "";
+
+  if ($("copay")) $("copay").value = payload.copay ?? 0;
+  if ($("dedRem")) $("dedRem").value = payload.deductibleRemaining ?? 0;
+  if ($("coinsPct")) $("coinsPct").value = payload.coinsurancePct ?? 0.2;
+  if ($("oopRem")) $("oopRem").value = payload.oopMaxRemaining ?? 999999;
+
+  initRows();
+  const procs = payload.procedures || [];
+  for (let i=0;i<Math.min(procs.length, state.rows.length); i++){
+    state.rows[i].cpt = procs[i].cpt || "";
+    state.rows[i].qty = procs[i].qty || 1;
+  }
+  renderProcTable();
+  recalcAll();
+}
+
+/* =========================
+   HISTORY (filters/search/export)
+   ========================= */
+function ymd(d){
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth()+1).padStart(2,"0");
+  const dd = String(d.getDate()).padStart(2,"0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function setHistoryRangeToday(){
+  const d = new Date();
+  if ($("historyFrom")) $("historyFrom").value = ymd(d);
+  if ($("historyTo")) $("historyTo").value = ymd(d);
+}
+function setHistoryRangeThisWeek(){
+  const d = new Date();
+  const day = d.getDay(); // 0 sun
+  const diffToMon = (day === 0 ? 6 : day - 1);
+  const mon = new Date(d);
+  mon.setDate(d.getDate() - diffToMon);
+  if ($("historyFrom")) $("historyFrom").value = ymd(mon);
+  if ($("historyTo")) $("historyTo").value = ymd(d);
+}
+
+function buildHistoryQuery(){
+  const params = new URLSearchParams();
+  const take = Math.min(parseInt($("historyTake")?.value || "50",10) || 50, 200);
+  params.set("take", String(take));
+
+  const from = $("historyFrom")?.value || "";
+  const to = $("historyTo")?.value || "";
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+
+  const staff = ($("historyStaff")?.value || "").trim();
+  const clinic = ($("historyClinic")?.value || "").trim();
+  const q = ($("historySearch")?.value || "").trim();
+
+  if (staff) params.set("staff", staff);
+  if (clinic) params.set("clinic", clinic);
+  if (q) params.set("q", q);
+
+  return params.toString();
+}
+
+async function loadQuoteHistory(){
+  const tbody = $("historyTbody");
+  if (!tbody) return;
+
+  tbody.innerHTML = `<tr><td colspan="7">Loading…</td></tr>`;
+  try{
+    const qs = buildHistoryQuery();
+    const res = await apiGet(`/api/quotes?${qs}`);
+    const items = res.items || [];
+    state.lastHistoryItems = items;
+
+    tbody.innerHTML = "";
+    if (items.length === 0){
+      tbody.innerHTML = `<tr><td colspan="7">No quotes found for the selected filters.</td></tr>`;
+      return;
+    }
+
+    for (const it of items){
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(it.createdAtLocal || it.createdAt || "")}</td>
+        <td>${escapeHtml(it.patientName || "")}</td>
+        <td>${escapeHtml(it.clinic || "")}</td>
+        <td>${escapeHtml(it.createdBy || "")}</td>
+        <td class="num">${money(Number(it.recommendedDeposit || 0))}</td>
+        <td class="num">${money(Number(it.estimatedOwes || 0))}</td>
+        <td><button class="btn btn--ghost btn--tiny" data-part="${escapeHtml(it.partitionKey)}" data-id="${escapeHtml(it.quoteId)}">Open</button></td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    tbody.querySelectorAll("button").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const part = btn.getAttribute("data-part");
+        const id = btn.getAttribute("data-id");
+        const q = await apiGet(`/api/quotes/${part}/${id}`);
+        loadQuoteIntoUI(q.payload);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+    });
+  } catch(err){
+    tbody.innerHTML = `<tr><td colspan="7">Error: ${escapeHtml(err.message || String(err))}</td></tr>`;
+  }
+}
+
+function exportHistoryCsv(){
+  const items = state.lastHistoryItems || [];
+  const headers = [
+    "createdAt","patientName","clinic","createdBy","recommendedDeposit","estimatedOwes","quoteId","partitionKey"
+  ];
+  const rows = [headers.join(",")];
+
+  for (const it of items){
+    const row = headers.map(h => {
+      const v = it[h] ?? "";
+      const s = String(v).replaceAll('"','""');
+      return `"${s}"`;
+    }).join(",");
+    rows.push(row);
+  }
+
+  const blob = new Blob([rows.join("\n")], { type:"text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `nes_quote_history_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* =========================
+   ADMIN DASHBOARD
+   ========================= */
+function setAdminRangeToday(){
+  const d = new Date();
+  if ($("adminFrom")) $("adminFrom").value = ymd(d);
+  if ($("adminTo")) $("adminTo").value = ymd(d);
+}
+function setAdminRangeThisWeek(){
+  const d = new Date();
+  const day = d.getDay();
+  const diffToMon = (day === 0 ? 6 : day - 1);
+  const mon = new Date(d);
+  mon.setDate(d.getDate() - diffToMon);
+  if ($("adminFrom")) $("adminFrom").value = ymd(mon);
+  if ($("adminTo")) $("adminTo").value = ymd(d);
+}
+
+function buildAdminQuery(){
+  const params = new URLSearchParams();
+  const from = $("adminFrom")?.value || "";
+  const to = $("adminTo")?.value || "";
+  const clinic = ($("adminClinic")?.value || "").trim();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  if (clinic) params.set("clinic", clinic);
+  return params.toString();
+}
+
+function renderAggTable(tbodyId, items, labelKey){
+  const tbody = $(tbodyId);
+  if (!tbody) return;
+  tbody.innerHTML = "";
+
+  if (!items || items.length === 0){
+    tbody.innerHTML = `<tr><td colspan="4">No data</td></tr>`;
+    return;
+  }
+
+  for (const it of items){
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(it[labelKey] || "")}</td>
+      <td class="num">${Number(it.quotes || 0)}</td>
+      <td class="num">${money(Number(it.deposits || 0))}</td>
+      <td class="num">${money(Number(it.due || 0))}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+async function loadAdminReport(){
+  if (!$("sumQuotes")) return;
+
+  $("sumQuotes").textContent = "…";
+  $("sumDeposits").textContent = "…";
+  $("sumDue").textContent = "…";
+
+  try{
+    const qs = buildAdminQuery();
+    const res = await apiGet(`/api/reports/summary?${qs}`);
+
+    $("sumQuotes").textContent = String(res.summary?.quotes || 0);
+    $("sumDeposits").textContent = money(Number(res.summary?.deposits || 0));
+    $("sumDue").textContent = money(Number(res.summary?.due || 0));
+
+    renderAggTable("byStaffTbody", res.byStaff, "staff");
+    renderAggTable("byClinicTbody", res.byClinic, "clinic");
+    renderAggTable("byDateTbody", res.byDate, "date");
+
+    window.__admin_last_export = res.exportItems || [];
+  } catch(err){
+    alert(`Admin report error: ${err.message || err}`);
+  }
+}
+
+function exportAdminCsv(){
+  const items = window.__admin_last_export || [];
+  const headers = ["date","createdAt","patientName","clinic","createdBy","recommendedDeposit","estimatedOwes","quoteId"];
+  const rows = [headers.join(",")];
+
+  for (const it of items){
+    const row = headers.map(h => {
+      const v = it[h] ?? "";
+      const s = String(v).replaceAll('"','""');
+      return `"${s}"`;
+    }).join(",");
+    rows.push(row);
+  }
+
+  const blob = new Blob([rows.join("\n")], { type:"text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `nes_admin_report_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* =========================
+   WIRING / BOOT
+   ========================= */
 function hookInputs(){
-  ["patientName","insurancePlan","preparedBy","copay","dedRem","coinsPct","oopRem"]
-    .forEach(id => $(id).addEventListener("input", recalcAll));
+  ["patientName","insurancePlan","preparedBy","clinic","copay","dedRem","coinsPct","oopRem"]
+    .forEach(id => $(id)?.addEventListener("input", recalcAll));
 }
 
 function resetAll(){
-  $("patientName").value = "";
-  $("insurancePlan").value = "";
-  $("preparedBy").value = "";
-  $("copay").value = "0";
-  $("dedRem").value = "0";
-  $("coinsPct").value = "0.20";
-  $("oopRem").value = "999999";
+  if ($("patientName")) $("patientName").value = "";
+  if ($("insurancePlan")) $("insurancePlan").value = "";
+  if ($("clinic")) $("clinic").value = "";
+  if ($("copay")) $("copay").value = "0";
+  if ($("dedRem")) $("dedRem").value = "0";
+  if ($("coinsPct")) $("coinsPct").value = "0.20";
+  if ($("oopRem")) $("oopRem").value = "999999";
 
   initRows();
   renderProcTable();
@@ -535,7 +716,9 @@ function resetAll(){
 }
 
 function initFeeUpload(){
-  $("feeFile").addEventListener("change", async (e) => {
+  const feeFile = $("feeFile");
+  if (!feeFile) return;
+  feeFile.addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const text = await file.text();
@@ -548,10 +731,49 @@ function initFeeUpload(){
   });
 }
 
+async function loadSampleFeeSchedule(){
+  try{
+    const res = await fetch("feeSchedule.sample.csv", { cache:"no-store" });
+    if (!res.ok) return;
+    const text = await res.text();
+    const items = parseCSV(text);
+    loadFeeSchedule(items);
+  } catch {}
+}
+
 function initButtons(){
-  $("btnPrint").addEventListener("click", () => window.print());
-  $("btnReset").addEventListener("click", () => {
+  $("btnPrint")?.addEventListener("click", () => window.print());
+  $("btnReset")?.addEventListener("click", () => {
     if (confirm("Reset quote inputs and CPT lines?")) resetAll();
+  });
+  $("btnSaveQuote")?.addEventListener("click", () => saveCurrentQuote());
+
+  // History buttons
+  $("btnToday")?.addEventListener("click", async () => { setHistoryRangeToday(); await loadQuoteHistory(); });
+  $("btnThisWeek")?.addEventListener("click", async () => { setHistoryRangeThisWeek(); await loadQuoteHistory(); });
+  $("btnHistoryRefresh")?.addEventListener("click", () => loadQuoteHistory());
+  $("btnHistoryExport")?.addEventListener("click", () => exportHistoryCsv());
+
+  // History filters (debounced)
+  let t = null;
+  const onHistChange = () => {
+    clearTimeout(t);
+    t = setTimeout(() => loadQuoteHistory(), 300);
+  };
+  ["historySearch","historyStaff","historyClinic","historyFrom","historyTo","historyTake"].forEach(id => {
+    $(id)?.addEventListener("input", onHistChange);
+    $(id)?.addEventListener("change", onHistChange);
+  });
+
+  // Admin buttons
+  $("btnAdminToday")?.addEventListener("click", async () => { setAdminRangeToday(); await loadAdminReport(); });
+  $("btnAdminThisWeek")?.addEventListener("click", async () => { setAdminRangeThisWeek(); await loadAdminReport(); });
+  $("btnAdminRefresh")?.addEventListener("click", () => loadAdminReport());
+  $("btnAdminExport")?.addEventListener("click", () => exportAdminCsv());
+
+  ["adminFrom","adminTo","adminClinic"].forEach(id => {
+    $(id)?.addEventListener("change", () => loadAdminReport());
+    $(id)?.addEventListener("input", () => loadAdminReport());
   });
 }
 
@@ -563,4 +785,22 @@ function initButtons(){
   initButtons();
   loadSampleFeeSchedule();
   recalcAll();
+
+  hydrateUserUI();
+
+  // default history range: last 7 days
+  if ($("historyFrom") && $("historyTo")){
+    const d = new Date();
+    const from = new Date(d);
+    from.setDate(d.getDate() - 7);
+    $("historyFrom").value = ymd(from);
+    $("historyTo").value = ymd(d);
+    loadQuoteHistory();
+  }
+
+  // admin defaults
+  if ($("adminFrom") && $("adminTo")){
+    setAdminRangeThisWeek();
+    loadAdminReport();
+  }
 })();
