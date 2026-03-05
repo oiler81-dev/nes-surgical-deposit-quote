@@ -6,7 +6,7 @@
       "direction": "in",
       "name": "req",
       "methods": ["get"],
-      "route": "admin-report"
+      "route": "adminReport"
     },
     { "type": "http", "direction": "out", "name": "res" }
   ]
