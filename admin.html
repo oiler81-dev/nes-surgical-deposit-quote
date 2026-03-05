@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>NES Admin Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar__inner">
+      <div class="brand">
+        <img class="brand__logo" src="assets/nes-logo.png" alt="NES logo" />
+        <div class="brand__text">
+          <div class="brand__title">Admin Dashboard</div>
+          <div class="brand__sub">Surgical Deposit Quotes</div>
+        </div>
+      </div>
+
+      <div class="topbar__actions">
+        <a class="btn btn--ghost" href="/">Back to Quotes</a>
+        <button id="btnAdminToday" class="btn btn--ghost" type="button">Today</button>
+        <button id="btnAdminThisWeek" class="btn btn--ghost" type="button">This Week</button>
+        <button id="btnAdminExport" class="btn btn--ghost" type="button">Export CSV</button>
+        <button id="btnAdminRefresh" class="btn" type="button">Refresh</button>
+        <a class="btn btn--ghost" href="/.auth/logout">Logout</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap layout">
+    <section class="card">
+      <div class="card__header">
+        <h2>Report Filters</h2>
+        <div class="pillRow">
+          <div class="pill pill--muted" id="adminWhoAmI">Signed in</div>
+        </div>
+      </div>
+
+      <div class="grid grid--3">
+        <div>
+          <label class="label">From (YYYY-MM-DD)</label>
+          <input id="adminFrom" class="input" type="date" />
+        </div>
+        <div>
+          <label class="label">To (YYYY-MM-DD)</label>
+          <input id="adminTo" class="input" type="date" />
+        </div>
+        <div>
+          <label class="label">Clinic filter (optional)</label>
+          <input id="adminClinic" class="input" type="text" placeholder="NES - Portland" />
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card__header">
+        <h2>Summary</h2>
+      </div>
+
+      <div class="totals">
+        <div class="totals__grid">
+          <div class="totals__item totals__item--highlight">
+            <div class="totals__label">Total Quotes</div>
+            <div class="totals__value" id="sumQuotes">0</div>
+          </div>
+
+          <div class="totals__item">
+            <div class="totals__label">Total Recommended Deposits</div>
+            <div class="totals__value" id="sumDeposits">$0.00</div>
+          </div>
+
+          <div class="totals__item">
+            <div class="totals__label">Total Estimated Amount Due</div>
+            <div class="totals__value" id="sumDue">$0.00</div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="sep" />
+
+      <div class="grid grid--2">
+        <div>
+          <h3 class="printSectionTitle">By Staff</h3>
+          <div class="tableWrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Staff</th>
+                  <th class="num">Quotes</th>
+                  <th class="num">Deposits</th>
+                  <th class="num">Due</th>
+                </tr>
+              </thead>
+              <tbody id="byStaffTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="printSectionTitle">By Clinic</h3>
+          <div class="tableWrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Clinic</th>
+                  <th class="num">Quotes</th>
+                  <th class="num">Deposits</th>
+                  <th class="num">Due</th>
+                </tr>
+              </thead>
+              <tbody id="byClinicTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="printSectionTitle">By Date</h3>
+      <div class="tableWrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th class="num">Quotes</th>
+              <th class="num">Deposits</th>
+              <th class="num">Due</th>
+            </tr>
+          </thead>
+          <tbody id="byDateTbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer wrap">
+    <div class="muted">Admins only.</div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
