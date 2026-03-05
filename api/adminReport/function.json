@@ -5,13 +5,8 @@
       "type": "httpTrigger",
       "direction": "in",
       "name": "req",
-      "methods": ["get"],
-      "route": "admin-report"
+      "methods": ["get"]
     },
-    {
-      "type": "http",
-      "direction": "out",
-      "name": "res"
-    }
+    { "type": "http", "direction": "out", "name": "res" }
   ]
 }
