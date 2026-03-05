@@ -1,7 +1,11 @@
 {
   "routes": [
+    { "route": "/admin.html", "allowedRoles": ["admin"] },
+
+    { "route": "/api/reports/*", "allowedRoles": ["admin"] },
+
     { "route": "/api/*", "allowedRoles": ["authenticated"] },
-    { "route": "/admin.html", "allowedRoles": ["authenticated"] },
+
     { "route": "/*", "allowedRoles": ["authenticated"] }
   ],
   "responseOverrides": {
@@ -10,8 +14,7 @@
       "redirect": "/.auth/login/aad"
     },
     "403": {
-      "statusCode": 302,
-      "redirect": "/.auth/login/aad"
+      "rewrite": "/403.html"
     }
   }
 }
