@@ -2,556 +2,101 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Admin Dashboard - Surgical Deposit Quotes</title>
-  <link rel="stylesheet" href="/styles.css" />
-  <style>
-    :root{
-      --card-bg:#fff;
-      --card-border:#e5e7eb;
-      --text:#0f172a;
-      --muted:#64748b;
-      --danger-bg:#fee2e2;
-      --danger-border:#fecaca;
-      --danger-text:#991b1b;
-      --btn:#0f172a;
-      --btnText:#fff;
-      --btnBorder:#0f172a;
-      --btnSecondaryBg:#fff;
-      --btnSecondaryText:#0f172a;
-      --btnSecondaryBorder:#cbd5e1;
-      --tableHeader:#f1f5f9;
-    }
-
-    body { background:#f8fafc; color:var(--text); }
-    .wrap{max-width:1200px;margin:0 auto;padding:16px}
-    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
-    .card{background:var(--card-bg);border:1px solid var(--card-border);border-radius:14px;padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
-    .grow{flex:1}
-    label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
-    input,select{
-      width:100%;
-      padding:10px 12px;
-      border:1px solid #d1d5db;
-      border-radius:12px;
-      background:#fff;
-      font-size:14px;
-    }
-    button{
-      padding:10px 14px;
-      border:1px solid var(--btnBorder);
-      border-radius:12px;
-      background:var(--btn);
-      color:var(--btnText);
-      cursor:pointer;
-      font-weight:600;
-      font-size:14px;
-    }
-    button.secondary{
-      background:var(--btnSecondaryBg);
-      color:var(--btnSecondaryText);
-      border:1px solid var(--btnSecondaryBorder);
-    }
-    button:disabled{opacity:.6;cursor:not-allowed}
-    .muted{color:var(--muted);font-size:12px}
-    .title{margin:0 0 6px;font-size:32px;font-weight:800;letter-spacing:-.02em}
-    .sub{margin:0 0 14px}
-    .err{
-      background:var(--danger-bg);
-      border:1px solid var(--danger-border);
-      color:var(--danger-text);
-      padding:10px 12px;
-      border-radius:12px;
-      white-space:pre-wrap;
-    }
-    .kpis{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}
-    .kpi{min-width:220px}
-    .kpi .val{font-size:28px;font-weight:800;margin-top:4px}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:10px;border-bottom:1px solid #e5e7eb;text-align:left;font-size:14px}
-    th{background:var(--tableHeader);font-weight:700}
-    .pill{
-      display:inline-block;
-      padding:2px 8px;
-      border-radius:999px;
-      border:1px solid #e2e8f0;
-      background:#fff;
-      color:#334155;
-      font-size:12px;
-      font-weight:600;
-    }
-    .sectionTitle{
-      font-size:18px;
-      font-weight:800;
-      margin:0 0 12px;
-    }
-    .actionsRow{display:flex;gap:8px;flex-wrap:wrap}
-    .smallBtn{padding:8px 10px;border-radius:10px;font-size:13px}
-    .nowrap{white-space:nowrap}
-    .right{margin-left:auto}
-    .hr{height:1px;background:#e5e7eb;margin:14px 0}
-    .hint{font-size:12px;color:var(--muted);margin-top:6px}
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin RCM Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
-
 <body>
-  <div class="wrap">
-    <h1 class="title">Admin Dashboard</h1>
-    <div class="muted sub">Surgical Deposit Quotes</div>
 
-    <div id="errorBox" class="err" style="display:none;margin-bottom:12px"></div>
-
-    <!-- 1) Admin report filters -->
-    <div class="card">
-      <div class="row">
-        <div>
-          <label>Report From</label>
-          <input id="rFrom" type="date" />
-        </div>
-        <div>
-          <label>Report To</label>
-          <input id="rTo" type="date" />
-        </div>
-        <div class="grow">
-          <label>Clinic filter (optional)</label>
-          <input id="rClinic" placeholder="e.g. NES - Portland" />
-        </div>
-        <div class="grow">
-          <label>Provider filter (optional)</label>
-          <input id="rProvider" placeholder="e.g. Dr. Smith" />
-        </div>
-
-        <div class="actionsRow right">
-          <button id="btnReportRefresh">Refresh Report</button>
-          <button class="secondary" id="btnReportExport">Export Report CSV</button>
-          <button class="secondary" id="btnLogout">Logout</button>
-        </div>
-      </div>
-
-      <div class="kpis">
-        <div class="card kpi" style="padding:12px">
-          <div class="muted">Quotes</div>
-          <div id="kpiQuotes" class="val">-</div>
-        </div>
-        <div class="card kpi" style="padding:12px">
-          <div class="muted">Recommended Deposits</div>
-          <div id="kpiDeposits" class="val">-</div>
-        </div>
-        <div class="card kpi" style="padding:12px">
-          <div class="muted">Estimated Owes</div>
-          <div id="kpiDue" class="val">-</div>
-        </div>
-      </div>
-
-      <div class="row" style="align-items:flex-start">
-        <div class="card grow" style="padding:12px">
-          <div class="sectionTitle">By Provider</div>
-          <table>
-            <thead>
-              <tr>
-                <th>Provider</th>
-                <th class="nowrap">Quotes</th>
-                <th class="nowrap">Deposits</th>
-                <th class="nowrap">Due</th>
-              </tr>
-            </thead>
-            <tbody id="byProviderTbody">
-              <tr><td colspan="4" class="muted">No data yet.</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="hint">
-        Admin report endpoint: <span class="pill">/api/reports/admin-report</span>
-      </div>
-    </div>
-
-    <div class="hr"></div>
-
-    <!-- 2) Quote History -->
-    <div class="card">
-      <div class="sectionTitle">4) Quote History</div>
-
-      <div class="row">
-        <div>
-          <label>From</label>
-          <input id="qhFrom" type="date" />
-        </div>
-        <div>
-          <label>To</label>
-          <input id="qhTo" type="date" />
-        </div>
-        <div style="min-width:180px">
-          <label>Max results</label>
-          <input id="qhTake" type="number" min="1" max="200" value="50" />
-        </div>
-
-        <div class="grow">
-          <label>Search Patient</label>
-          <input id="qhSearch" placeholder="John" />
-        </div>
-
-        <div class="grow">
-          <label>Filter by Staff</label>
-          <input id="qhStaff" placeholder="nperz@..." />
-        </div>
-
-        <div class="grow">
-          <label>Filter by Clinic</label>
-          <input id="qhClinic" placeholder="Cedar Mill" />
-        </div>
-
-        <div class="grow">
-          <label>Filter by Provider</label>
-          <input id="qhProvider" placeholder="Dr. Lastname" />
-        </div>
-
-        <div class="actionsRow right">
-          <button class="secondary smallBtn" id="btnQhToday">Today</button>
-          <button class="secondary smallBtn" id="btnQhWeek">This Week</button>
-          <button class="secondary smallBtn" id="btnQhExport">Export CSV</button>
-          <button class="smallBtn" id="btnQhRefresh">Refresh</button>
-        </div>
-      </div>
-
-      <div style="margin-top:12px">
-        <table>
-          <thead>
-            <tr>
-              <th>Date/Time</th>
-              <th>Patient</th>
-              <th>Provider</th>
-              <th>Clinic</th>
-              <th>Staff</th>
-              <th class="nowrap">Recommended Deposit</th>
-              <th class="nowrap">Estimated Due</th>
-              <th>Open</th>
-            </tr>
-          </thead>
-          <tbody id="qhTbody">
-            <tr><td colspan="8" class="muted">No results yet.</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="hint">
-        Quote history endpoint: <span class="pill">/api/quotes</span> (returns <span class="pill">{ ok, items }</span>)
-      </div>
-    </div>
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-title">Admin RCM Dashboard</div>
+    <div class="brand-sub">By provider • CPT utilization • revenue trends • export</div>
   </div>
 
-  <script>
-    // ---------- helpers ----------
-    function showError(msg){
-      const el = document.getElementById("errorBox");
-      el.style.display = "block";
-      el.textContent = msg;
-    }
-    function clearError(){
-      const el = document.getElementById("errorBox");
-      el.style.display = "none";
-      el.textContent = "";
-    }
-    function fmtMoney(n){
-      const v = Number(n || 0);
-      return v.toLocaleString(undefined, { style:"currency", currency:"USD" });
-    }
-    function toYmdLocal(d){
-      const y = d.getFullYear();
-      const m = String(d.getMonth()+1).padStart(2,"0");
-      const day = String(d.getDate()).padStart(2,"0");
-      return `${y}-${m}-${day}`;
-    }
-    function startOfWeek(d){
-      // Monday start
-      const x = new Date(d);
-      const day = x.getDay(); // 0=Sun
-      const diff = (day === 0 ? -6 : 1 - day);
-      x.setDate(x.getDate() + diff);
-      x.setHours(0,0,0,0);
-      return x;
-    }
+  <div class="actions">
+    <a class="btn" href="index.html">Back to Quotes</a>
+    <button id="refreshBtn" class="btn">Refresh</button>
+    <button id="exportBtn" class="btn primary">Export Filtered CSV</button>
+  </div>
+</header>
 
-    async function fetchJsonOrThrow(url){
-      const res = await fetch(url, { cache: "no-store" });
-      const text = await res.text();
+<main class="wrap">
+  <section class="card">
+    <h2>Filters</h2>
+    <div class="grid">
+      <label>
+        Start Date
+        <input id="startDate" type="date" />
+      </label>
+      <label>
+        End Date
+        <input id="endDate" type="date" />
+      </label>
+      <label>
+        Provider
+        <select id="providerFilter"></select>
+      </label>
+    </div>
+    <div class="actions" style="justify-content:flex-end;">
+      <button id="applyBtn" class="btn">Apply</button>
+      <button id="clearBtn" class="btn danger">Clear</button>
+    </div>
+  </section>
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status} from ${url}\n${text}`);
-      }
+  <section class="card">
+    <h2>KPIs</h2>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-label">Quotes</div><div class="kpi-value" id="kpiQuotes">0</div></div>
+      <div class="kpi"><div class="kpi-label">Total</div><div class="kpi-value" id="kpiTotal">$0.00</div></div>
+      <div class="kpi"><div class="kpi-label">Avg / Quote</div><div class="kpi-value" id="kpiAvg">$0.00</div></div>
+      <div class="kpi"><div class="kpi-label">Top CPT</div><div class="kpi-value" id="kpiTopCpt">—</div></div>
+    </div>
+  </section>
 
-      try {
-        return JSON.parse(text);
-      } catch (e) {
-        throw new Error(`Bad JSON from ${url}\n${text}`);
-      }
-    }
+  <section class="card">
+    <h2>Revenue Over Time</h2>
+    <canvas id="revChart" height="120"></canvas>
+  </section>
 
-    function downloadCsv(filename, headers, rows){
-      const escape = (v) => {
-        const s = String(v ?? "");
-        if (s.includes('"') || s.includes(",") || s.includes("\n")) return '"' + s.replaceAll('"','""') + '"';
-        return s;
-      };
-      const csv = [headers.join(",")]
-        .concat(rows.map(r => headers.map(h => escape(r[h])).join(",")))
-        .join("\n");
+  <section class="card">
+    <h2>Totals by Provider</h2>
+    <canvas id="provChart" height="140"></canvas>
+  </section>
 
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = filename;
-      a.click();
-    }
+  <section class="card">
+    <h2>CPT Utilization</h2>
+    <canvas id="cptChart" height="160"></canvas>
+  </section>
 
-    // ---------- Admin Report ----------
-    let __reportExportItems = [];
+  <section class="card">
+    <h2>Detail Table</h2>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>SavedAt</th>
+            <th>Quote Date</th>
+            <th>Patient</th>
+            <th>Provider</th>
+            <th>CPT</th>
+            <th>Description</th>
+            <th>Fee</th>
+            <th>Qty</th>
+            <th>Line Total</th>
+          </tr>
+        </thead>
+        <tbody id="detailBody"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
 
-    function renderByProvider(rows){
-      const tbody = document.getElementById("byProviderTbody");
-      tbody.innerHTML = "";
-      if (!rows || !rows.length){
-        tbody.innerHTML = `<tr><td colspan="4" class="muted">No data.</td></tr>`;
-        return;
-      }
-      rows.slice(0, 60).forEach(r => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${r.provider || "(blank)"}</td>
-          <td>${r.quotes || 0}</td>
-          <td>${fmtMoney(r.deposits || 0)}</td>
-          <td>${fmtMoney(r.due || 0)}</td>
-        `;
-        tbody.appendChild(tr);
-      });
-    }
+<footer class="footer">
+  <small>Pulls from /api/quotes when available; local fallback otherwise.</small>
+</footer>
 
-    async function loadAdminReport(){
-      const from = document.getElementById("rFrom").value;
-      const to = document.getElementById("rTo").value;
-      const clinic = document.getElementById("rClinic").value.trim();
-      const provider = document.getElementById("rProvider").value.trim();
-
-      const qs = new URLSearchParams();
-      if (from) qs.set("from", from);
-      if (to) qs.set("to", to);
-      if (clinic) qs.set("clinic", clinic);
-      if (provider) qs.set("provider", provider);
-
-      const url = "/api/reports/admin-report" + (qs.toString() ? ("?" + qs.toString()) : "");
-      const data = await fetchJsonOrThrow(url);
-
-      if (!data || !data.ok) {
-        throw new Error("Admin report returned unexpected response:\n" + JSON.stringify(data, null, 2));
-      }
-
-      document.getElementById("kpiQuotes").textContent = data.summary?.quotes ?? 0;
-      document.getElementById("kpiDeposits").textContent = fmtMoney(data.summary?.deposits ?? 0);
-      document.getElementById("kpiDue").textContent = fmtMoney(data.summary?.due ?? 0);
-
-      renderByProvider(data.byProvider || []);
-      __reportExportItems = Array.isArray(data.exportItems) ? data.exportItems : [];
-    }
-
-    function exportAdminReportCsv(){
-      const rows = __reportExportItems || [];
-      const headers = ["date","createdAt","patientName","provider","clinic","createdBy","recommendedDeposit","estimatedOwes","quoteId"];
-      downloadCsv("admin-report.csv", headers, rows);
-    }
-
-    // ---------- Quote History ----------
-    let __qhItems = [];
-
-    function renderQuoteHistory(items){
-      const tbody = document.getElementById("qhTbody");
-      tbody.innerHTML = "";
-
-      if (!items || !items.length){
-        tbody.innerHTML = `<tr><td colspan="8" class="muted">No results.</td></tr>`;
-        return;
-      }
-
-      items.forEach(x => {
-        const tr = document.createElement("tr");
-        const openUrl = x.quoteId ? `/index.html?quoteId=${encodeURIComponent(x.quoteId)}` : "#";
-
-        tr.innerHTML = `
-          <td class="nowrap">${x.createdAtLocal || x.createdAt || ""}</td>
-          <td>${x.patientName || ""}</td>
-          <td>${x.provider || ""}</td>
-          <td>${x.clinic || ""}</td>
-          <td>${x.createdBy || ""}</td>
-          <td class="nowrap">${fmtMoney(x.recommendedDeposit || 0)}</td>
-          <td class="nowrap">${fmtMoney(x.estimatedOwes || 0)}</td>
-          <td><a href="${openUrl}">Open</a></td>
-        `;
-        tbody.appendChild(tr);
-      });
-    }
-
-    async function loadQuoteHistory(){
-      const from = document.getElementById("qhFrom").value;
-      const to = document.getElementById("qhTo").value;
-      const takeRaw = document.getElementById("qhTake").value;
-      const take = Math.max(1, Math.min(parseInt(takeRaw || "50", 10) || 50, 200));
-
-      const q = document.getElementById("qhSearch").value.trim();
-      const staff = document.getElementById("qhStaff").value.trim();
-      const clinic = document.getElementById("qhClinic").value.trim();
-      const provider = document.getElementById("qhProvider").value.trim();
-
-      const qs = new URLSearchParams();
-      if (from) qs.set("from", from);
-      if (to) qs.set("to", to);
-      qs.set("take", String(take));
-      if (q) qs.set("q", q);
-      if (staff) qs.set("staff", staff);
-      if (clinic) qs.set("clinic", clinic);
-      if (provider) qs.set("provider", provider);
-
-      const url = "/api/quotes?" + qs.toString();
-      const data = await fetchJsonOrThrow(url);
-
-      // THIS is the most common cause of “Error: Error”:
-      // your UI expects data.items but API returns something else.
-      // We hard-validate and show the real response if it’s wrong.
-      if (!data || data.ok !== true || !Array.isArray(data.items)) {
-        throw new Error("Quote history returned unexpected response:\n" + JSON.stringify(data, null, 2));
-      }
-
-      __qhItems = data.items;
-      renderQuoteHistory(__qhItems);
-    }
-
-    function exportQuoteHistoryCsv(){
-      const rows = __qhItems || [];
-      const headers = [
-        "createdAt",
-        "createdAtLocal",
-        "patientName",
-        "provider",
-        "clinic",
-        "createdBy",
-        "recommendedDeposit",
-        "estimatedOwes",
-        "quoteId",
-        "partitionKey",
-        "rowKey"
-      ];
-      downloadCsv("quote-history.csv", headers, rows);
-    }
-
-    // ---------- wiring ----------
-    document.getElementById("btnLogout").addEventListener("click", () => {
-      window.location.href = "/.auth/logout";
-    });
-
-    document.getElementById("btnReportRefresh").addEventListener("click", async () => {
-      clearError();
-      try {
-        await loadAdminReport();
-      } catch (e) {
-        console.error(e);
-        showError(e.message || String(e));
-      }
-    });
-
-    document.getElementById("btnReportExport").addEventListener("click", () => {
-      clearError();
-      try {
-        exportAdminReportCsv();
-      } catch (e) {
-        console.error(e);
-        showError(e.message || String(e));
-      }
-    });
-
-    document.getElementById("btnQhRefresh").addEventListener("click", async () => {
-      clearError();
-      try {
-        await loadQuoteHistory();
-      } catch (e) {
-        console.error(e);
-        showError(e.message || String(e));
-        // keep table visible but show a single-row error
-        document.getElementById("qhTbody").innerHTML = `<tr><td colspan="8">Error: ${String(e.message || e)}</td></tr>`;
-      }
-    });
-
-    document.getElementById("btnQhExport").addEventListener("click", () => {
-      clearError();
-      try {
-        exportQuoteHistoryCsv();
-      } catch (e) {
-        console.error(e);
-        showError(e.message || String(e));
-      }
-    });
-
-    document.getElementById("btnQhToday").addEventListener("click", async () => {
-      const now = new Date();
-      const today = toYmdLocal(now);
-      document.getElementById("qhFrom").value = today;
-      document.getElementById("qhTo").value = today;
-
-      clearError();
-      try { await loadQuoteHistory(); }
-      catch (e){
-        console.error(e);
-        showError(e.message || String(e));
-        document.getElementById("qhTbody").innerHTML = `<tr><td colspan="8">Error: ${String(e.message || e)}</td></tr>`;
-      }
-    });
-
-    document.getElementById("btnQhWeek").addEventListener("click", async () => {
-      const now = new Date();
-      const start = startOfWeek(now);
-      const from = toYmdLocal(start);
-      const to = toYmdLocal(now);
-      document.getElementById("qhFrom").value = from;
-      document.getElementById("qhTo").value = to;
-
-      clearError();
-      try { await loadQuoteHistory(); }
-      catch (e){
-        console.error(e);
-        showError(e.message || String(e));
-        document.getElementById("qhTbody").innerHTML = `<tr><td colspan="8">Error: ${String(e.message || e)}</td></tr>`;
-      }
-    });
-
-    // ---------- init defaults ----------
-    (async function init(){
-      const now = new Date();
-      const today = toYmdLocal(now);
-
-      // default report range: today
-      document.getElementById("rFrom").value = today;
-      document.getElementById("rTo").value = today;
-
-      // default quote history range: last 7 days
-      const from7 = new Date(now);
-      from7.setDate(from7.getDate() - 7);
-      document.getElementById("qhFrom").value = toYmdLocal(from7);
-      document.getElementById("qhTo").value = today;
-
-      clearError();
-
-      try { await loadAdminReport(); }
-      catch(e){
-        console.error(e);
-        showError(e.message || String(e));
-      }
-
-      try { await loadQuoteHistory(); }
-      catch(e){
-        console.error(e);
-        // show the error in the history table too
-        showError(e.message || String(e));
-        document.getElementById("qhTbody").innerHTML = `<tr><td colspan="8">Error: ${String(e.message || e)}</td></tr>`;
-      }
-    })();
-  </script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="admin.js"></script>
 </body>
 </html>
