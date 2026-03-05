@@ -1,10 +1,5 @@
-// api/shared/table.js
 const { TableClient } = require("@azure/data-tables");
 
-/**
- * Read the SWA user principal from the request headers.
- * Returns parsed principal object or null.
- */
 function getUserFromSwa(req) {
   const b64 =
     (req.headers && (req.headers["x-ms-client-principal"] || req.headers["X-MS-CLIENT-PRINCIPAL"])) ||
@@ -20,9 +15,6 @@ function getUserFromSwa(req) {
   }
 }
 
-/**
- * Standard JSON response helper
- */
 function jsonResponse(context, status, body) {
   context.res = {
     status,
@@ -31,41 +23,27 @@ function jsonResponse(context, status, body) {
   };
 }
 
-/**
- * Storage connection resolution:
- * - Prefer AZURE_STORAGE_CONNECTION_STRING (your custom var)
- * - Fallback to AzureWebJobsStorage (standard Functions var)
- */
 function getStorageConnectionString() {
   return (
     process.env.AZURE_STORAGE_CONNECTION_STRING ||
-    process.env.AzureWebJobsStorage || // standard Functions setting
-    process.env.AZUREWEBJOBSSTORAGE // just in case of odd casing
+    process.env.AzureWebJobsStorage ||
+    process.env.AZUREWEBJOBSSTORAGE
   );
 }
 
-/**
- * Gets a TableClient for quotes table.
- * Requires a storage connection string in either:
- * - AZURE_STORAGE_CONNECTION_STRING
- * - AzureWebJobsStorage
- */
 function getClient() {
   const conn = getStorageConnectionString();
   const tableName = process.env.QUOTES_TABLE_NAME || "SurgicalDepositQuotes";
 
   if (!conn) {
     throw new Error(
-      "Missing storage connection string. Set AZURE_STORAGE_CONNECTION_STRING or AzureWebJobsStorage in Static Web App Environment Variables."
+      "Missing storage connection string. Set AzureWebJobsStorage (recommended) or AZURE_STORAGE_CONNECTION_STRING in SWA Environment Variables."
     );
   }
 
   return TableClient.fromConnectionString(conn, tableName);
 }
 
-/**
- * YYYYMMDD (UTC), string-sortable
- */
 function ymdCompact(dateObj) {
   const yyyy = dateObj.getUTCFullYear();
   const mm = String(dateObj.getUTCMonth() + 1).padStart(2, "0");
