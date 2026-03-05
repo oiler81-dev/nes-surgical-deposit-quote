@@ -17,7 +17,7 @@ function addAgg(map, key, dep, due){
 
 module.exports = async function (context, req) {
   const user = getUserFromSwa(req);
-  if (!user) return jsonResponse(context, 401, { error: "Not authenticated" });
+  if (!user) return jsonResponse(context, 401, { ok:false, error: "Not authenticated" });
 
   const from = compact(req.query.from || "");
   const to = compact(req.query.to || "");
@@ -63,8 +63,8 @@ module.exports = async function (context, req) {
         date: ymdFromPartition(e.partitionKey),
         createdAt: e.createdAt,
         patientName: e.patientName,
-        provider,
-        clinic,
+        provider: provider,
+        clinic: clinic,
         createdBy: e.createdBy,
         recommendedDeposit: dep,
         estimatedOwes: due,
@@ -87,6 +87,6 @@ module.exports = async function (context, req) {
 
     return jsonResponse(context, 200, { ok:true, summary, byStaff, byClinic, byProvider, byDate, exportItems });
   } catch (err){
-    return jsonResponse(context, 500, { error: err.message || "Failed to build report" });
+    return jsonResponse(context, 500, { ok:false, error: err.message || "Failed to build report" });
   }
 };
