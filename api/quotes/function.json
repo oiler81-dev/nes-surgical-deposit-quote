@@ -8,6 +8,10 @@
       "methods": ["get", "post"],
       "route": "quotes"
     },
-    { "type": "http", "direction": "out", "name": "res" }
+    {
+      "type": "http",
+      "direction": "out",
+      "name": "res"
+    }
   ]
 }
