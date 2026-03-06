@@ -1,41 +1,32 @@
-const { TableClient } = require("@azure/data-tables");
+const { TableClient, AzureNamedKeyCredential } = require("@azure/data-tables");
 
-function getUserFromSwa(req) {
-  const b64 = req.headers["x-ms-client-principal"];
-  if (!b64) return null;
-  try {
-    const json = Buffer.from(b64, "base64").toString("utf8");
-    return JSON.parse(json);
-  } catch {
-    return null;
+function getTableClient(tableName) {
+  const account = process.env.STORAGE_ACCOUNT_NAME;
+  const key = process.env.STORAGE_ACCOUNT_KEY;
+
+  if (!account || !key) {
+    throw new Error("Missing STORAGE_ACCOUNT_NAME or STORAGE_ACCOUNT_KEY app settings.");
   }
-}
 
-function jsonResponse(context, status, body) {
-  context.res = {
-    status,
-    headers: { "Content-Type": "application/json" },
-    body
+  const credential = new AzureNamedKeyCredential(account, key);
+  const client = new TableClient(
+    `https://${account}.table.core.windows.net`,
+    tableName,
+    credential
+  );
+
+  return {
+    async upsertEntity(entity) {
+      await client.createTable().catch(() => {});
+      return client.upsertEntity(entity, "Merge");
+    },
+    async *listEntities() {
+      await client.createTable().catch(() => {});
+      for await (const entity of client.listEntities()) {
+        yield entity;
+      }
+    }
   };
 }
 
-function getClient() {
-  const conn = process.env.AZURE_STORAGE_CONNECTION_STRING;
-  const tableName = process.env.QUOTES_TABLE_NAME || "SurgicalDepositQuotes";
-  if (!conn) throw new Error("Missing AZURE_STORAGE_CONNECTION_STRING");
-  return TableClient.fromConnectionString(conn, tableName);
-}
-
-function ymdCompact(dateObj) {
-  // Use UTC to keep partition keys stable
-  const yyyy = dateObj.getUTCFullYear();
-  const mm = String(dateObj.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(dateObj.getUTCDate()).padStart(2, "0");
-  return `${yyyy}${mm}${dd}`;
-}
-
-function isoNow() {
-  return new Date().toISOString();
-}
-
-module.exports = { getUserFromSwa, jsonResponse, getClient, ymdCompact, isoNow };
+module.exports = { getTableClient };
