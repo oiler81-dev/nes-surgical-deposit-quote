@@ -1,25 +1,22 @@
-const { TableClient, AzureNamedKeyCredential } = require("@azure/data-tables");
+const { TableClient } = require("@azure/data-tables");
 
 function getTableClient(tableName) {
-  const account = process.env.STORAGE_ACCOUNT_NAME;
-  const key = process.env.STORAGE_ACCOUNT_KEY;
+  const connectionString =
+    process.env.AZURE_STORAGE_CONNECTION_STRING ||
+    process.env.AzureWebJobsStorage;
 
-  if (!account || !key) {
-    throw new Error("Missing STORAGE_ACCOUNT_NAME or STORAGE_ACCOUNT_KEY app settings.");
+  if (!connectionString) {
+    throw new Error("Missing AZURE_STORAGE_CONNECTION_STRING or AzureWebJobsStorage.");
   }
 
-  const credential = new AzureNamedKeyCredential(account, key);
-  const client = new TableClient(
-    `https://${account}.table.core.windows.net`,
-    tableName,
-    credential
-  );
+  const client = TableClient.fromConnectionString(connectionString, tableName);
 
   return {
     async upsertEntity(entity) {
       await client.createTable().catch(() => {});
       return client.upsertEntity(entity, "Merge");
     },
+
     async *listEntities() {
       await client.createTable().catch(() => {});
       for await (const entity of client.listEntities()) {
