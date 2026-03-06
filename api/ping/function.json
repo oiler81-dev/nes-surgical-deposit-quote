@@ -8,6 +8,10 @@
       "methods": ["get"],
       "route": "ping"
     },
-    { "type": "http", "direction": "out", "name": "res" }
+    {
+      "type": "http",
+      "direction": "out",
+      "name": "res"
+    }
   ]
 }
