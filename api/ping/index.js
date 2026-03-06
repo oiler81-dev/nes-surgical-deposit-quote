@@ -1,3 +1,7 @@
 module.exports = async function (context, req) {
-  context.res = { status: 200, body: { ok: true, ts: new Date().toISOString() } };
+  context.res = {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+    body: { ok: true, time: new Date().toISOString() }
+  };
 };
