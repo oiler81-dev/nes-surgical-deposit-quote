@@ -78,10 +78,17 @@ async function apiPost(path, body) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
     });
-    if (!res.ok) return null;
-    return await safeJson(res);
-  } catch {
-    return null;
+
+    if (!res.ok) {
+      let text = "";
+      try { text = await res.text(); } catch {}
+      return { ok: false, status: res.status, errorText: text };
+    }
+
+    const json = await safeJson(res);
+    return { ok: true, data: json };
+  } catch (err) {
+    return { ok: false, status: 0, errorText: String(err?.message || err) };
   }
 }
 
@@ -181,7 +188,6 @@ function parseFeeCsv(text) {
     const fee = parseNum(cols[allowedIdx]);
 
     if (!cpt || !Number.isFinite(fee)) continue;
-
     out.push({ cpt, desc, fee });
   }
 
@@ -192,28 +198,41 @@ function parseFeeCsv(text) {
    FEES
    ========================= */
 async function loadFeesFromRootCsv() {
-  try {
-    const res = await fetch("/feeSchedule.sample.csv", { cache: "no-store" });
-    if (!res.ok) return false;
+  const candidatePaths = [
+    "/feeSchedule.sample.csv",
+    "./feeSchedule.sample.csv",
+    "feeSchedule.sample.csv",
+    "/feeSchedule.csv",
+    "./feeSchedule.csv",
+    "feeSchedule.csv"
+  ];
 
-    const text = await res.text();
-    const parsed = parseFeeCsv(text);
-    if (!parsed.length) return false;
+  for (const path of candidatePaths) {
+    try {
+      const res = await fetch(path, { cache: "no-store" });
+      if (!res.ok) continue;
 
-    state.feeMap.clear();
-    parsed.forEach(x => {
-      state.feeMap.set(String(x.cpt).trim(), {
-        desc: String(x.desc || "").trim(),
-        fee: parseNum(x.fee)
+      const text = await res.text();
+      const parsed = parseFeeCsv(text);
+      if (!parsed.length) continue;
+
+      state.feeMap.clear();
+      parsed.forEach(x => {
+        state.feeMap.set(String(x.cpt).trim(), {
+          desc: String(x.desc || "").trim(),
+          fee: parseNum(x.fee)
+        });
       });
-    });
 
-    renderFeePreview();
-    populateCptDatalist();
-    return true;
-  } catch {
-    return false;
+      renderFeePreview();
+      populateCptDatalist();
+      return true;
+    } catch {
+      // keep trying next path
+    }
   }
+
+  return false;
 }
 
 function populateCptDatalist() {
@@ -748,7 +767,7 @@ async function saveQuote() {
   }
 
   const apiSaved = await apiPost("/api/quotes", payload);
-  if (apiSaved) {
+  if (apiSaved?.ok) {
     await refreshHistory();
     alert("Quote saved.");
     return;
@@ -759,7 +778,9 @@ async function saveQuote() {
   saveLocalHistory(items.slice(0, 200));
   state.history = items.slice(0, 200);
   renderHistory();
-  alert("Quote saved (local fallback).");
+
+  console.error("Quotes API failed:", apiSaved);
+  alert("Quote saved locally only. /api/quotes failed, so it will not appear in other browsers until the API storage is fixed.");
 }
 
 /* =========================
@@ -900,7 +921,7 @@ async function init() {
 
   const feesOk = await loadFeesFromRootCsv();
   if (!feesOk) {
-    alert("Could not load feeSchedule.sample.csv from the site root. You can still upload the fee CSV manually.");
+    alert("Could not load the fee schedule from the site root. You can still upload the fee CSV manually.");
   }
 
   state.rows = [];
