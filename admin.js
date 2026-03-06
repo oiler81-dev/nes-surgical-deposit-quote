@@ -1,220 +1,325 @@
 const $ = (id) => document.getElementById(id);
 
-function money(n){
+const state = {
+  items: [],
+  providers: []
+};
+
+function money(n) {
   const v = Number.isFinite(n) ? n : 0;
   return v.toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
-function parseNum(x){
-  const v = parseFloat(String(x ?? "").replace(/,/g,""));
+
+function parseNum(x) {
+  const v = parseFloat(String(x ?? "").replace(/,/g, ""));
   return Number.isFinite(v) ? v : 0;
 }
-function esc(s){
+
+function escapeHtml(s) {
   return String(s ?? "")
-    .replaceAll("&","&amp;")
-    .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;")
-    .replaceAll("'","&#039;");
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
-async function safeJson(res){
-  const txt = await res.text();
-  try { return JSON.parse(txt); } catch { return null; }
+function todayYmd() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-async function apiGet(path){
-  try{
-    const res = await fetch(path, { cache:"no-store" });
-    if(!res.ok) return null;
-    return await safeJson(res);
-  }catch{
+
+function startOfWeekYmd() {
+  const d = new Date();
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+async function safeJson(res) {
+  const txt = await res.text();
+  try {
+    return JSON.parse(txt);
+  } catch {
     return null;
   }
 }
 
-function loadLocalHistory(){
-  try{
-    return JSON.parse(localStorage.getItem("nes_estimate_history_v2") || "[]");
-  }catch{
+async function apiGet(path) {
+  try {
+    const res = await fetch(path, { cache: "no-store" });
+    if (!res.ok) return null;
+    return await safeJson(res);
+  } catch {
+    return null;
+  }
+}
+
+function loadLocalHistory() {
+  try {
+    return JSON.parse(localStorage.getItem("nes_estimate_history_v3") || "[]");
+  } catch {
     return [];
   }
 }
 
-let allQuotes = [];
-let charts = { rev:null, prov:null, cpt:null };
+async function loadProviders() {
+  const data = await apiGet("/api/providers");
+  const providers = data && Array.isArray(data.providers) ? data.providers : [];
+  state.providers = providers;
 
-function toDateOnly(isoOrYmd){
-  if(!isoOrYmd) return null;
-  // accept YYYY-MM-DD or ISO
-  const s = String(isoOrYmd);
-  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  const d = new Date(s);
-  if(isNaN(d.getTime())) return null;
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  const host = $("adminProviderList");
+  if (!host) return;
+
+  host.innerHTML = providers
+    .slice()
+    .sort((a, b) => a.localeCompare(b))
+    .map(p => `<option value="${escapeHtml(p)}"></option>`)
+    .join("");
 }
 
-function withinRange(dateYmd, startYmd, endYmd){
-  if(!dateYmd) return false;
-  if(startYmd && dateYmd < startYmd) return false;
-  if(endYmd && dateYmd > endYmd) return false;
-  return true;
+function getFilters() {
+  return {
+    from: $("filterFrom")?.value || "",
+    to: $("filterTo")?.value || "",
+    provider: ($("filterProvider")?.value || "").trim().toLowerCase(),
+    clinic: ($("filterClinic")?.value || "").trim().toLowerCase(),
+    staff: ($("filterStaff")?.value || "").trim().toLowerCase(),
+    take: Math.max(1, Math.min(5000, Math.floor(parseNum($("filterTake")?.value || 5000)) || 5000))
+  };
 }
 
-function flattenLines(quotes){
-  const lines = [];
-  for(const q of quotes){
-    const savedAt = q.savedAt || "";
-    const quoteDate = q.quoteDate || "";
-    const patient = q.patientName || "";
-    for(const r of (q.rows || [])){
-      const fee = parseNum(r.fee);
-      const qty = Math.max(1, parseNum(r.qty));
-      lines.push({
-        savedAt,
-        quoteDate,
-        patient,
-        provider: r.provider || "",
-        cpt: r.cpt || "",
-        desc: r.desc || "",
-        fee,
-        qty,
-        lineTotal: fee * qty
-      });
-    }
+function itemDateYmd(q) {
+  const raw = q.quoteDate || q.savedAt;
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function applyFilters(items) {
+  const f = getFilters();
+
+  return items.filter(q => {
+    const ymd = itemDateYmd(q);
+    const provider = String(q.provider || q.rows?.[0]?.provider || "").toLowerCase();
+    const clinic = String(q.clinic || "").toLowerCase();
+    const staff = String(q.preparedBy || "").toLowerCase();
+
+    if (f.from && ymd && ymd < f.from) return false;
+    if (f.to && ymd && ymd > f.to) return false;
+    if (f.provider && !provider.includes(f.provider)) return false;
+    if (f.clinic && !clinic.includes(f.clinic)) return false;
+    if (f.staff && !staff.includes(f.staff)) return false;
+
+    return true;
+  }).slice(0, f.take);
+}
+
+async function loadItems() {
+  const take = Math.max(1, Math.min(5000, Math.floor(parseNum($("filterTake")?.value || 5000)) || 5000));
+  const api = await apiGet(`/api/quotes?take=${take}`);
+  if (api && Array.isArray(api.items)) {
+    state.items = api.items;
+    return;
   }
-  return lines;
+  state.items = loadLocalHistory();
 }
 
-function fillProviderFilter(lines){
-  const sel = $("providerFilter");
-  const providers = Array.from(new Set(lines.map(x => x.provider).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
-  sel.innerHTML = `<option value="">All Providers</option>` + providers.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
-}
-
-function aggregate(lines){
-  const byDay = new Map();
-  const byProvider = new Map();
-  const byCpt = new Map();
-
-  for(const x of lines){
-    const day = toDateOnly(x.quoteDate) || toDateOnly(x.savedAt);
-    if(day){
-      byDay.set(day, (byDay.get(day) || 0) + x.lineTotal);
-    }
-
-    const prov = x.provider || "Unassigned";
-    byProvider.set(prov, (byProvider.get(prov) || 0) + x.lineTotal);
-
-    const cpt = x.cpt || "—";
-    byCpt.set(cpt, (byCpt.get(cpt) || 0) + x.qty);
-  }
-
-  const dayLabels = Array.from(byDay.keys()).sort();
-  const dayVals = dayLabels.map(d => byDay.get(d));
-
-  const provPairs = Array.from(byProvider.entries()).sort((a,b)=>b[1]-a[1]).slice(0, 15);
-  const provLabels = provPairs.map(x=>x[0]);
-  const provVals = provPairs.map(x=>x[1]);
-
-  const cptPairs = Array.from(byCpt.entries()).sort((a,b)=>b[1]-a[1]).slice(0, 20);
-  const cptLabels = cptPairs.map(x=>x[0]);
-  const cptVals = cptPairs.map(x=>x[1]);
-
-  return { dayLabels, dayVals, provLabels, provVals, cptLabels, cptVals, cptPairs };
-}
-
-function setKpis(filteredQuotes, lines, cptPairs){
-  const quoteCount = filteredQuotes.length;
-  const total = lines.reduce((s,x)=>s+x.lineTotal,0);
-  const avg = quoteCount ? total / quoteCount : 0;
-  const topCpt = cptPairs.length ? `${cptPairs[0][0]} (${cptPairs[0][1]})` : "—";
+function renderSummary(items) {
+  const quoteCount = items.length;
+  const estDue = items.reduce((s, q) => s + parseNum(q.estimatedDue || q.estOwes || q.total || 0), 0);
+  const recDep = items.reduce((s, q) => s + parseNum(q.recommendedDeposit || q.recDeposit || q.total || 0), 0);
+  const avgDep = quoteCount ? recDep / quoteCount : 0;
 
   $("kpiQuotes").textContent = String(quoteCount);
-  $("kpiTotal").textContent = money(total);
-  $("kpiAvg").textContent = money(avg);
-  $("kpiTopCpt").textContent = topCpt;
+  $("kpiEstDue").textContent = money(estDue);
+  $("kpiRecDep").textContent = money(recDep);
+  $("kpiAvgDep").textContent = money(avgDep);
 }
 
-function renderCharts(agg){
-  // destroy old charts
-  charts.rev?.destroy?.();
-  charts.prov?.destroy?.();
-  charts.cpt?.destroy?.();
+function renderProviderSummary(items) {
+  const map = new Map();
 
-  charts.rev = new Chart($("revChart"), {
-    type: "line",
-    data: {
-      labels: agg.dayLabels,
-      datasets: [{ label: "Revenue", data: agg.dayVals }]
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { display: true } },
-      scales: { y: { ticks: { callback: (v)=>money(v) } } }
+  items.forEach(q => {
+    const provider = q.provider || q.rows?.[0]?.provider || "Unassigned";
+    const estDue = parseNum(q.estimatedDue || q.estOwes || q.total || 0);
+    const recDep = parseNum(q.recommendedDeposit || q.recDeposit || q.total || 0);
+
+    if (!map.has(provider)) {
+      map.set(provider, { provider, quotes: 0, estDue: 0, recDep: 0 });
     }
+
+    const item = map.get(provider);
+    item.quotes += 1;
+    item.estDue += estDue;
+    item.recDep += recDep;
   });
 
-  charts.prov = new Chart($("provChart"), {
-    type: "bar",
-    data: {
-      labels: agg.provLabels,
-      datasets: [{ label: "Total", data: agg.provVals }]
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { display: true } },
-      scales: { y: { ticks: { callback: (v)=>money(v) } } }
-    }
-  });
+  const rows = Array.from(map.values()).sort((a, b) => b.recDep - a.recDep);
+  const host = $("providerSummaryTbody");
 
-  charts.cpt = new Chart($("cptChart"), {
-    type: "bar",
-    data: {
-      labels: agg.cptLabels,
-      datasets: [{ label: "Qty", data: agg.cptVals }]
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { display: true } }
-    }
-  });
+  if (!rows.length) {
+    host.innerHTML = `<tr><td colspan="4">No data yet.</td></tr>`;
+    return;
+  }
+
+  host.innerHTML = rows.map(r => `
+    <tr>
+      <td>${escapeHtml(r.provider)}</td>
+      <td class="num">${r.quotes}</td>
+      <td class="num">${money(r.estDue)}</td>
+      <td class="num">${money(r.recDep)}</td>
+    </tr>
+  `).join("");
 }
 
-function renderTable(lines){
-  const body = $("detailBody");
-  body.innerHTML = "";
+function renderCptSummary(items) {
+  const map = new Map();
 
-  for(const x of lines.slice(0, 500)){ // cap for UI
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${esc(x.savedAt ? new Date(x.savedAt).toLocaleString() : "")}</td>
-      <td>${esc(x.quoteDate || "")}</td>
-      <td>${esc(x.patient || "")}</td>
-      <td>${esc(x.provider || "")}</td>
-      <td>${esc(x.cpt || "")}</td>
-      <td>${esc(x.desc || "")}</td>
-      <td>${money(x.fee)}</td>
-      <td>${esc(x.qty)}</td>
-      <td>${money(x.lineTotal)}</td>
+  items.forEach(q => {
+    (q.rows || []).forEach(r => {
+      const key = r.cpt || "";
+      if (!key) return;
+
+      if (!map.has(key)) {
+        map.set(key, {
+          cpt: key,
+          desc: r.desc || "",
+          qty: 0,
+          allowed: 0,
+          lineTotal: 0
+        });
+      }
+
+      const item = map.get(key);
+      item.qty += parseNum(r.qty || 1);
+      item.allowed += parseNum(r.allowed ?? r.fee ?? 0);
+      item.lineTotal += parseNum(r.lineTotal || 0);
+    });
+  });
+
+  const rows = Array.from(map.values()).sort((a, b) => b.qty - a.qty);
+  const host = $("cptSummaryTbody");
+
+  if (!rows.length) {
+    host.innerHTML = `<tr><td colspan="5">No data yet.</td></tr>`;
+    return;
+  }
+
+  host.innerHTML = rows.map(r => `
+    <tr>
+      <td>${escapeHtml(r.cpt)}</td>
+      <td>${escapeHtml(r.desc)}</td>
+      <td class="num">${r.qty}</td>
+      <td class="num">${money(r.allowed)}</td>
+      <td class="num">${money(r.lineTotal)}</td>
+    </tr>
+  `).join("");
+}
+
+function renderDetail(items) {
+  const host = $("detailTbody");
+
+  if (!items.length) {
+    host.innerHTML = `<tr><td colspan="8">No data yet.</td></tr>`;
+    return;
+  }
+
+  host.innerHTML = items.map(q => {
+    const provider = q.provider || q.rows?.[0]?.provider || "";
+    const estDue = parseNum(q.estimatedDue || q.estOwes || q.total || 0);
+    const recDep = parseNum(q.recommendedDeposit || q.recDeposit || q.total || 0);
+    const cpts = (q.rows || []).map(r => r.cpt).filter(Boolean).join(", ");
+    const dt = q.savedAt ? new Date(q.savedAt).toLocaleString() : "";
+
+    return `
+      <tr>
+        <td>${escapeHtml(dt)}</td>
+        <td>${escapeHtml(q.patientName || "")}</td>
+        <td>${escapeHtml(provider)}</td>
+        <td>${escapeHtml(q.clinic || "")}</td>
+        <td>${escapeHtml(q.preparedBy || "")}</td>
+        <td class="num">${money(estDue)}</td>
+        <td class="num">${money(recDep)}</td>
+        <td>${escapeHtml(cpts)}</td>
+      </tr>
     `;
-    body.appendChild(tr);
-  }
+  }).join("");
 }
 
-function exportCsv(lines){
-  const out = [];
-  out.push(["SavedAt","QuoteDate","Patient","Provider","CPT","Description","Fee","Qty","LineTotal"]);
-  for(const x of lines){
-    out.push([x.savedAt, x.quoteDate, x.patient, x.provider, x.cpt, x.desc, x.fee, x.qty, x.lineTotal]);
-  }
-  const csv = out.map(r => r.map(csvCell).join(",")).join("\n");
-  download(`rcm_export_${new Date().toISOString().slice(0,10)}.csv`, csv, "text/csv");
+function renderAll() {
+  const filtered = applyFilters(state.items);
+  renderSummary(filtered);
+  renderProviderSummary(filtered);
+  renderCptSummary(filtered);
+  renderDetail(filtered);
 }
-function csvCell(v){
+
+function exportCsv() {
+  const filtered = applyFilters(state.items);
+  if (!filtered.length) {
+    alert("No data to export.");
+    return;
+  }
+
+  const rows = [];
+  rows.push([
+    "SavedAt",
+    "PatientName",
+    "InsurancePlan",
+    "PreparedBy",
+    "Clinic",
+    "Provider",
+    "EstimatedDue",
+    "RecommendedDeposit",
+    "CPT",
+    "Description",
+    "Qty",
+    "Allowed",
+    "AdjPct",
+    "AdjAllowed",
+    "LineTotal"
+  ]);
+
+  filtered.forEach(q => {
+    const provider = q.provider || q.rows?.[0]?.provider || "";
+    const estDue = parseNum(q.estimatedDue || q.estOwes || q.total || 0);
+    const recDep = parseNum(q.recommendedDeposit || q.recDeposit || q.total || 0);
+
+    (q.rows || []).forEach(r => {
+      rows.push([
+        q.savedAt || "",
+        q.patientName || "",
+        q.insurancePlan || "",
+        q.preparedBy || "",
+        q.clinic || "",
+        provider,
+        estDue,
+        recDep,
+        r.cpt || "",
+        r.desc || "",
+        parseNum(r.qty || 1),
+        parseNum(r.allowed ?? r.fee ?? 0),
+        parseNum(r.adjPct || 0),
+        parseNum(r.adjAllowed || 0),
+        parseNum(r.lineTotal || 0)
+      ]);
+    });
+  });
+
+  const csv = rows.map(r => r.map(csvCell).join(",")).join("\n");
+  download(`admin_report_${todayYmd()}.csv`, csv, "text/csv");
+}
+
+function csvCell(v) {
   const s = String(v ?? "");
-  if (/[",\n]/.test(s)) return `"${s.replace(/"/g,'""')}"`;
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }
-function download(filename, content, mime){
+
+function download(filename, content, mime) {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -226,71 +331,37 @@ function download(filename, content, mime){
   URL.revokeObjectURL(url);
 }
 
-function applyFilters(){
-  const start = $("startDate").value || "";
-  const end = $("endDate").value || "";
-  const provider = $("providerFilter").value || "";
-
-  const filteredQuotes = allQuotes.filter(q => {
-    const qDate = toDateOnly(q.quoteDate) || toDateOnly(q.savedAt);
-    if(!withinRange(qDate, start, end)) return false;
-    if(!provider) return true;
-    return (q.rows || []).some(r => (r.provider || "") === provider);
+function wire() {
+  $("btnAdminRefresh")?.addEventListener("click", async () => {
+    await loadItems();
+    renderAll();
   });
 
-  // Flatten then apply provider filter at line level
-  let lines = flattenLines(filteredQuotes);
+  $("btnAdminExport")?.addEventListener("click", exportCsv);
 
-  if(provider){
-    lines = lines.filter(x => x.provider === provider);
-  }
+  $("btnAdminToday")?.addEventListener("click", () => {
+    $("filterFrom").value = todayYmd();
+    $("filterTo").value = todayYmd();
+    renderAll();
+  });
 
-  // Now date filter on lines (in case quoteDate varies)
-  lines = lines.filter(x => withinRange(toDateOnly(x.quoteDate) || toDateOnly(x.savedAt), start, end));
+  $("btnAdminThisWeek")?.addEventListener("click", () => {
+    $("filterFrom").value = startOfWeekYmd();
+    $("filterTo").value = todayYmd();
+    renderAll();
+  });
 
-  fillProviderFilter(flattenLines(allQuotes)); // keep full provider list stable
-  const agg = aggregate(lines);
-  setKpis(filteredQuotes, lines, agg.cptPairs);
-  renderCharts(agg);
-  renderTable(lines);
-
-  // stash for export
-  window.__filteredLines = lines;
+  ["filterFrom", "filterTo", "filterProvider", "filterClinic", "filterStaff", "filterTake"].forEach(id => {
+    $(id)?.addEventListener("input", renderAll);
+  });
 }
 
-async function loadAll(){
-  // API first
-  const api = await apiGet("/api/quotes?take=5000");
-  if(api && Array.isArray(api.items)){
-    allQuotes = api.items;
-  }else{
-    allQuotes = loadLocalHistory();
-  }
-
-  // Default dates: last 30 days
-  const d = new Date();
-  const end = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  const d2 = new Date(d.getTime() - 29*24*60*60*1000);
-  const start = `${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,"0")}-${String(d2.getDate()).padStart(2,"0")}`;
-
-  $("startDate").value = start;
-  $("endDate").value = end;
-
-  fillProviderFilter(flattenLines(allQuotes));
-  applyFilters();
+async function init() {
+  $("filterTake").value = "5000";
+  await loadProviders();
+  await loadItems();
+  wire();
+  renderAll();
 }
 
-function clearFilters(){
-  $("providerFilter").value = "";
-  $("startDate").value = "";
-  $("endDate").value = "";
-  applyFilters();
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-  $("refreshBtn").addEventListener("click", loadAll);
-  $("applyBtn").addEventListener("click", applyFilters);
-  $("clearBtn").addEventListener("click", clearFilters);
-  $("exportBtn").addEventListener("click", () => exportCsv(window.__filteredLines || []));
-  loadAll();
-});
+document.addEventListener("DOMContentLoaded", init);
