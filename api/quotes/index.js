@@ -1,3 +1,4 @@
+const { randomUUID } = require("crypto");
 const { getTableClient } = require("../shared/table");
 
 function json(context, status, body) {
@@ -19,7 +20,7 @@ function safeDateKey(iso) {
 function normalizeQuote(body) {
   const now = new Date().toISOString();
   return {
-    id: body.id || crypto.randomUUID(),
+    id: body.id || randomUUID(),
     savedAt: body.savedAt || now,
     quoteDate: body.quoteDate || now.slice(0, 10),
     patientName: body.patientName || "",
@@ -119,6 +120,9 @@ module.exports = async function (context, req) {
     return json(context, 405, { error: "Method not allowed" });
   } catch (err) {
     context.log("quotes error:", err);
-    return json(context, 500, { error: "Quotes API failed", details: String(err?.message || err) });
+    return json(context, 500, {
+      error: "Quotes API failed",
+      details: String(err?.message || err)
+    });
   }
 };
