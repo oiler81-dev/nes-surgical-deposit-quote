@@ -1,9 +1,5 @@
-// /api/providers/index.js
-// Scrapes https://nespecialists.com/team/ and returns provider names.
-// Caches results in-memory for a few hours to avoid hammering the site.
-
 let CACHE = { at: 0, providers: [] };
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 function uniqSorted(arr) {
   return Array.from(new Set(arr))
@@ -26,26 +22,15 @@ function stripTags(s) {
 }
 
 function extractProvidersFromHtml(html) {
-  // The team page includes headings like "### Dr. Mia Horvath" etc.
-  // We’ll pull any heading that starts with Dr.
   const providers = [];
-
-  // Match heading tags (h1-h4) containing "Dr."
   const headingRegex = /<(h1|h2|h3|h4)[^>]*>([\s\S]*?)<\/\1>/gi;
   let m;
+
   while ((m = headingRegex.exec(html)) !== null) {
     const text = stripTags(m[2]);
-    if (/^Dr\.\s+/i.test(text)) {
-      // Normalize spacing
-      providers.push(text.replace(/\s+/g, " ").trim());
+    if (/^(Dr\.|Landon Masterfield)/i.test(text)) {
+      providers.push(text);
     }
-  }
-
-  // Fallback: markdown-ish headings sometimes appear in parsed HTML blocks
-  // e.g. "### Dr. Name"
-  const mdRegex = /###\s*(Dr\.\s+[A-Za-z][^\r\n<]*)/g;
-  while ((m = mdRegex.exec(html)) !== null) {
-    providers.push(stripTags(m[1]));
   }
 
   return uniqSorted(providers);
@@ -54,6 +39,7 @@ function extractProvidersFromHtml(html) {
 module.exports = async function (context, req) {
   try {
     const now = Date.now();
+
     if (CACHE.providers.length && (now - CACHE.at) < CACHE_TTL_MS) {
       context.res = {
         status: 200,
@@ -63,17 +49,14 @@ module.exports = async function (context, req) {
       return;
     }
 
-    const url = "https://nespecialists.com/team/";
-    const resp = await fetch(url, {
+    const resp = await fetch("https://nespecialists.com/team/", {
       method: "GET",
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; NES Estimate Bot; +https://estimate.nespecialists.com)"
+        "User-Agent": "Mozilla/5.0 (compatible; NES Estimate Tool)"
       }
     });
 
-    if (!resp.ok) {
-      throw new Error(`Failed to fetch team page: ${resp.status} ${resp.statusText}`);
-    }
+    if (!resp.ok) throw new Error(`Failed to fetch team page: ${resp.status}`);
 
     const html = await resp.text();
     const providers = extractProvidersFromHtml(html);
@@ -86,10 +69,9 @@ module.exports = async function (context, req) {
       body: { source: "live", count: providers.length, providers }
     };
   } catch (e) {
-    // Fail safe: return a small static fallback so the dropdown still works.
-    context.log("providers scrape error:", e?.message || e);
-
     const fallback = [
+      "Dr. Ron Bowman",
+      "Landon Masterfield, PA-C",
       "Dr. Mia Horvath",
       "Dr. Todd Galle",
       "Dr. Cara Beach",
@@ -99,14 +81,18 @@ module.exports = async function (context, req) {
       "Dr. Manny Moy",
       "Dr. Peter Pham",
       "Dr. Thomas Melillo",
+      "Dr. Melinda Nicholes",
       "Dr. Taylor Bunka",
-      "Dr. Ron Bowman"
+      "Dr. Yama Dehqanzada",
+      "Dr. Magnus Schlyer"
     ];
+
+    context.log("providers scrape error:", e?.message || e);
 
     context.res = {
       status: 200,
       headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-      body: { source: "fallback", count: fallback.length, providers: fallback, warning: "Scrape failed; using fallback list." }
+      body: { source: "fallback", count: fallback.length, providers: fallback }
     };
   }
 };
