@@ -4,11 +4,9 @@
   --text:#0b1b2b;
   --muted:#5c6b7a;
   --line:#e5edf5;
-
   --navy:#0e2f4f;
   --navy2:#173a5b;
   --green:#2f6b3f;
-
   --shadow: 0 10px 30px rgba(2, 12, 27, .08);
   --radius: 16px;
 }
@@ -357,7 +355,6 @@ html, body{
 
 .muted{ color: var(--muted); }
 
-/* Admin */
 .kpiGrid{
   display:grid;
   gap:12px;
@@ -396,7 +393,6 @@ html, body{
   min-height: 340px;
 }
 
-/* Print */
 .print-only{ display:none; }
 .no-print{ display:block; }
 
@@ -441,10 +437,10 @@ html, body{
 
 .printHeader{
   display:grid;
-  grid-template-columns: 150px 1fr 340px;
-  gap: 14px;
+  grid-template-columns: 120px 1fr 280px;
+  gap: 12px;
   align-items:center;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .printLogoWrap{
@@ -454,14 +450,14 @@ html, body{
 }
 
 .printLogo{
-  width: 130px;
+  width: 95px;
   height: auto;
   object-fit: contain;
   display:block;
 }
 
 .printTitle{
-  font-size: 30px;
+  font-size: 22px;
   font-weight: 1000;
   color: #0e2f4f;
   line-height: 1.05;
@@ -494,7 +490,7 @@ html, body{
 
 .printKpiValue{
   margin-top: 4px;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 1000;
   color: #0e2f4f;
   font-variant-numeric: tabular-nums;
@@ -504,17 +500,17 @@ html, body{
   display:grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .printField{
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.35;
 }
 
 .printSectionTitle{
-  margin-top: 10px;
-  margin-bottom: 8px;
+  margin-top: 8px;
+  margin-bottom: 6px;
   font-weight: 1000;
   color: #0e2f4f;
   font-size: 13px;
@@ -529,9 +525,9 @@ html, body{
 }
 
 .printTable th, .printTable td{
-  padding: 10px 10px;
+  padding: 8px 8px;
   border-bottom: 1px solid #e5edf5;
-  font-size: 12px;
+  font-size: 11px;
   vertical-align: top;
 }
 
@@ -547,8 +543,8 @@ html, body{
 .printTwoCol{
   display:grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 12px;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .printBlock{
@@ -561,25 +557,25 @@ html, body{
   display:flex;
   justify-content:space-between;
   gap: 10px;
-  padding: 10px 0;
+  padding: 8px 0;
   border-bottom: 1px solid #e5edf5;
-  font-size: 12px;
+  font-size: 11px;
 }
 .printCalcRow:last-child{ border-bottom: none; }
 .printCalcRow b{ font-weight: 1000; }
 .printCalcRow--emph span{ font-weight: 1000; }
 
 .printDisclaimer{
-  margin-top: 12px;
-  padding-top: 10px;
+  margin-top: 10px;
+  padding-top: 8px;
   border-top: 1px solid #e5edf5;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   color: #111;
 }
 
 .printFooterTiny{
-  margin-top: 10px;
+  margin-top: 8px;
   display:flex;
   justify-content:space-between;
   align-items:center;
