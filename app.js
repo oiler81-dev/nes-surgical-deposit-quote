@@ -58,9 +58,6 @@ async function safeJson(res) {
   }
 }
 
-/* =========================
-   API
-   ========================= */
 async function apiGet(path) {
   try {
     const res = await fetch(path, { cache: "no-store" });
@@ -92,9 +89,6 @@ async function apiPost(path, body) {
   }
 }
 
-/* =========================
-   AUTH / USER
-   ========================= */
 async function loadMe() {
   const data = await apiGet("/.auth/me");
   const principal = Array.isArray(data) ? data[0] : null;
@@ -103,29 +97,20 @@ async function loadMe() {
   const whoAmI = $("whoAmI");
   const adminLink = $("adminLink");
 
-  if (!whoAmI) return;
-
-  if (!principal || !principal.clientPrincipal) {
-    whoAmI.textContent = "Signed in";
-    if (adminLink) adminLink.style.display = "none";
-    return;
+  if (whoAmI) {
+    if (!principal || !principal.clientPrincipal) {
+      whoAmI.textContent = "Signed in";
+    } else {
+      const cp = principal.clientPrincipal;
+      whoAmI.textContent = cp.userDetails || cp.userId || "Signed in";
+    }
   }
 
-  const cp = principal.clientPrincipal;
-  const userText = cp.userDetails || cp.userId || "Signed in";
-  whoAmI.textContent = userText;
-
-  const roles = Array.isArray(cp.userRoles) ? cp.userRoles.map(x => String(x).toLowerCase()) : [];
-  const isAdmin = roles.includes("admin") || roles.includes("administrator");
-
   if (adminLink) {
-    adminLink.style.display = isAdmin ? "inline-flex" : "none";
+    adminLink.style.display = "inline-flex";
   }
 }
 
-/* =========================
-   CSV PARSING
-   ========================= */
 function splitCsvLine(line) {
   const out = [];
   let cur = "";
@@ -194,9 +179,6 @@ function parseFeeCsv(text) {
   return out;
 }
 
-/* =========================
-   FEES
-   ========================= */
 async function loadFeesFromRootCsv() {
   const candidatePaths = [
     "/feeSchedule.sample.csv",
@@ -227,9 +209,7 @@ async function loadFeesFromRootCsv() {
       renderFeePreview();
       populateCptDatalist();
       return true;
-    } catch {
-      // keep trying next path
-    }
+    } catch {}
   }
 
   return false;
@@ -264,9 +244,6 @@ function renderFeePreview() {
   `).join("");
 }
 
-/* =========================
-   PROVIDERS
-   ========================= */
 async function loadProviders() {
   const data = await apiGet("/api/providers");
   if (data && Array.isArray(data.providers)) {
@@ -291,9 +268,6 @@ function mergeProviderDatalist() {
   host.innerHTML = merged.map(p => `<option value="${escapeHtml(p)}"></option>`).join("");
 }
 
-/* =========================
-   PROCEDURE ROWS
-   ========================= */
 function createEmptyRow() {
   return {
     id: crypto.randomUUID(),
@@ -419,9 +393,6 @@ function renderProcedureRows() {
   }
 }
 
-/* =========================
-   CALCS
-   ========================= */
 function getCalcSnapshot() {
   const dedRem = Math.max(0, parseNum($("dedRem")?.value));
   const coinsPct = Math.max(0, parseNum($("coinsPct")?.value));
@@ -483,9 +454,6 @@ function recalcAll() {
   syncPrintView(s);
 }
 
-/* =========================
-   PRINT
-   ========================= */
 function syncPrintView(snapshot = null) {
   const s = snapshot || getCalcSnapshot();
 
@@ -520,9 +488,6 @@ function syncPrintView(snapshot = null) {
   }
 }
 
-/* =========================
-   HISTORY
-   ========================= */
 function loadLocalHistory() {
   try {
     return JSON.parse(localStorage.getItem("nes_estimate_history_v3") || "[]");
@@ -716,9 +681,6 @@ function exportHistoryCSV() {
   download(`quote_history_${todayYmd()}.csv`, csv, "text/csv");
 }
 
-/* =========================
-   QUOTE SAVE
-   ========================= */
 function buildQuotePayload() {
   const snapshot = getCalcSnapshot();
   const activeRows = snapshot.lineRows;
@@ -783,9 +745,6 @@ async function saveQuote() {
   alert("Quote saved locally only. /api/quotes failed, so it will not appear in other browsers until the API storage is fixed.");
 }
 
-/* =========================
-   RESET / FILTER BUTTONS
-   ========================= */
 function clearQuote() {
   if (!confirm("Reset the current quote?")) return;
 
@@ -818,9 +777,6 @@ function setHistoryThisWeek() {
   renderHistory();
 }
 
-/* =========================
-   DOWNLOAD / INPUT WIRING
-   ========================= */
 function csvCell(v) {
   const s = String(v ?? "");
   if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
@@ -912,9 +868,6 @@ function wireInputs() {
   }
 }
 
-/* =========================
-   INIT
-   ========================= */
 async function init() {
   await loadMe();
   await loadProviders();
