@@ -2,86 +2,393 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>NES Estimate Tool</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>NES Surgical Deposit Estimate</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
+
 <body>
+  <!-- Top Bar -->
+  <header class="topbar no-print">
+    <div class="wrap topbar__inner">
+      <div class="brand">
+        <img class="brand__logo" src="assets/nes-logo.png" alt="Northwest Extremity Specialists logo" />
+        <div class="brand__text">
+          <div class="brand__title">Surgical Deposit Estimate</div>
+          <div class="brand__sub">Estimate tool (NES)</div>
+        </div>
+      </div>
 
-  <header class="topbar">
-    <div class="brand">
-      <div class="brand-title">NES Estimate Tool</div>
-      <div class="brand-sub">CPT + Provider dropdowns (auto-scraped providers)</div>
-    </div>
-
-    <div class="actions">
-      <a class="btn" href="admin.html">Admin RCM Dashboard</a>
-      <button id="addRowBtn" class="btn">Add Row</button>
-      <button id="saveQuoteBtn" class="btn primary">Save Quote</button>
-      <button id="clearBtn" class="btn danger">Clear</button>
+      <div class="topbar__actions">
+        <a id="adminLink" class="btn btn--ghost" href="/admin.html" style="display:none;">Admin</a>
+        <a class="btn btn--ghost" href="/.auth/logout">Logout</a>
+      </div>
     </div>
   </header>
 
-  <main class="wrap">
-    <section class="card">
-      <h2>Quote</h2>
+  <main class="wrap layout no-print">
+    <!-- Who am I -->
+    <div class="pillRow">
+      <div class="pill pill--muted" id="whoAmI">Signed in</div>
+    </div>
 
-      <div class="grid">
-        <label>
-          Patient Name
-          <input id="patientName" type="text" placeholder="optional" />
-        </label>
-        <label>
-          Date
-          <input id="quoteDate" type="date" />
-        </label>
-        <label>
-          Notes
-          <input id="quoteNotes" type="text" placeholder="optional" />
-        </label>
+    <!-- 1) Fee Schedule -->
+    <section class="card">
+      <div class="card__header">
+        <h2>1) Fee Schedule</h2>
+        <div class="card__headerRight">
+          <a class="link" href="feeSchedule.sample.csv" download>Download fee schedule CSV</a>
+        </div>
       </div>
 
-      <div class="table-wrap">
-        <table class="table">
+      <div class="grid grid--2">
+        <div>
+          <label class="label">Upload Fee Schedule CSV</label>
+          <input id="feeFile" class="inputFile" type="file" accept=".csv" />
+          <div class="hint">Primary source is the root CSV file. Manual upload is only a fallback. Required columns: <b>CPT</b>, <b>Description</b> (optional), and an <b>Allowed</b> column (Allowed/AllowedAmount/Allowable).</div>
+        </div>
+
+        <div class="feeStatus">
+          <div class="feeStatus__badge">
+            <div class="feeStatus__title">Loaded Fee Schedule</div>
+            <div class="feeStatus__value"><span id="feeCount">0</span> CPTs loaded</div>
+          </div>
+          <div class="hint">CPT must match exactly with no decimals.</div>
+        </div>
+      </div>
+
+      <details class="details">
+        <summary>Preview loaded fee schedule</summary>
+        <div class="tableWrap">
+          <table class="table" id="feePreview">
+            <thead>
+              <tr>
+                <th>CPT</th>
+                <th>Description</th>
+                <th class="num">Allowed</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+
+    <!-- 2) Quote Inputs -->
+    <section class="card">
+      <div class="card__header">
+        <h2>2) Quote Inputs</h2>
+      </div>
+
+      <datalist id="cptList"></datalist>
+
+      <datalist id="providerList">
+        <option value="Dr. Ron Bowman"></option>
+        <option value="Landon Masterfield, PA-C"></option>
+        <option value="Dr. Mia Horvath"></option>
+        <option value="Dr. Todd Galle"></option>
+        <option value="Dr. Cara Beach"></option>
+        <option value="Dr. Clifford Mah"></option>
+        <option value="Dr. Denny Le"></option>
+        <option value="Dr. Lacey Beth Lockhart"></option>
+        <option value="Dr. Manny Moy"></option>
+        <option value="Dr. Peter Pham"></option>
+        <option value="Dr. Thomas Melillo"></option>
+        <option value="Dr. Melinda Nicholes"></option>
+        <option value="Dr. Taylor Bunka"></option>
+        <option value="Dr. Yama Dehqanzada"></option>
+        <option value="Dr. Magnus Schlyer"></option>
+      </datalist>
+
+      <div class="grid grid--3">
+        <div>
+          <label class="label">Patient Name</label>
+          <input id="patientName" class="input" type="text" placeholder="Last, First" />
+        </div>
+
+        <div>
+          <label class="label">Insurance Plan</label>
+          <input id="insurancePlan" class="input" type="text" placeholder="Anthem Blue Cross" />
+        </div>
+
+        <div>
+          <label class="label">Prepared By</label>
+          <input id="preparedBy" class="input" type="text" placeholder="Staff name" />
+        </div>
+
+        <div>
+          <label class="label">Clinic</label>
+          <input id="clinic" class="input" type="text" placeholder="NES - Cedar Mill" />
+        </div>
+
+        <div>
+          <label class="label">Provider</label>
+          <input id="provider" class="input" type="text" list="providerList" placeholder="Dr. Lastname" />
+          <div class="hint">Pick from the dropdown to keep provider naming consistent.</div>
+        </div>
+
+        <div>
+          <label class="label">Copay</label>
+          <input id="copay" class="input" type="number" min="0" step="0.01" value="0" />
+        </div>
+
+        <div>
+          <label class="label">Deductible Remaining</label>
+          <input id="dedRem" class="input" type="number" min="0" step="0.01" value="0" />
+        </div>
+
+        <div>
+          <label class="label">Coinsurance % (patient)</label>
+          <input id="coinsPct" class="input" type="number" min="0" max="1" step="0.01" value="0.20" />
+          <div class="hint">Enter as a decimal. Example: 20% = 0.20</div>
+        </div>
+
+        <div>
+          <label class="label">OOP Max Remaining</label>
+          <input id="oopRem" class="input" type="number" min="0" step="0.01" value="999999" />
+        </div>
+      </div>
+    </section>
+
+    <!-- 3) CPT Lines -->
+    <section class="card">
+      <div class="card__header">
+        <h2>3) Procedures</h2>
+      </div>
+
+      <div class="hint">Multi-procedure adjustment: 1st CPT = 100%, additional CPTs = 50%.</div>
+
+      <div class="tableWrap">
+        <table class="table table--tight">
           <thead>
             <tr>
-              <th style="width:220px">Provider</th>
-              <th style="width:150px">CPT</th>
+              <th>#</th>
+              <th style="width:140px;">CPT</th>
               <th>Description</th>
-              <th style="width:120px">Fee</th>
-              <th style="width:90px">Qty</th>
-              <th style="width:140px">Line Total</th>
-              <th style="width:80px"></th>
+              <th class="num" style="width:90px;">Qty</th>
+              <th class="num" style="width:120px;">Allowed</th>
+              <th class="num" style="width:100px;">Adj %</th>
+              <th class="num" style="width:140px;">Adj Allowed</th>
+              <th class="num" style="width:140px;">Line Total</th>
+              <th style="width:110px;">Action</th>
             </tr>
           </thead>
-          <tbody id="rows"></tbody>
+          <tbody id="procTbody"></tbody>
         </table>
       </div>
 
       <div class="totals">
-        <div class="totals-row">
-          <div class="totals-label">Estimated Total</div>
-          <div class="totals-value big" id="grandTotal">$0.00</div>
+        <div class="totals__grid">
+          <div class="totals__item">
+            <div class="totals__label">Total Allowed (after multi-proc adjustment)</div>
+            <div class="totals__value" id="totalAllowed">$0.00</div>
+          </div>
+
+          <div class="totals__item">
+            <div class="totals__label">Deductible Applied</div>
+            <div class="totals__value" id="dedApplied">$0.00</div>
+          </div>
+
+          <div class="totals__item">
+            <div class="totals__label">Coinsurance Amount</div>
+            <div class="totals__value" id="coinsAmt">$0.00</div>
+          </div>
+
+          <div class="totals__item">
+            <div class="totals__label">Copay</div>
+            <div class="totals__value" id="copayOut">$0.00</div>
+          </div>
+
+          <div class="totals__item totals__item--highlight">
+            <div class="totals__label">Estimated Amount Due (OOP capped)</div>
+            <div class="totals__value" id="estOwes">$0.00</div>
+          </div>
+
+          <div class="totals__item totals__item--highlight">
+            <div class="totals__label">Recommended Deposit</div>
+            <div class="totals__value" id="recDeposit">$0.00</div>
+          </div>
         </div>
+      </div>
+
+      <div class="actions">
+        <button id="btnSaveQuote" class="btn" type="button">Save Quote</button>
+        <button id="btnPrint" class="btn btn--ghost" type="button">Print Quote</button>
+        <button id="btnReset" class="btn btn--danger" type="button">Reset</button>
       </div>
     </section>
 
+    <!-- 4) Quote History -->
     <section class="card">
-      <div class="history-header">
-        <h2>Quote History</h2>
-        <div class="actions">
-          <button id="refreshHistoryBtn" class="btn">Refresh</button>
-          <button id="exportHistoryBtn" class="btn">Export CSV</button>
-          <button id="clearHistoryBtn" class="btn danger">Clear History</button>
+      <div class="card__header">
+        <h2>4) Quote History</h2>
+      </div>
+
+      <div class="grid grid--3">
+        <div>
+          <label class="label">From</label>
+          <input id="historyFrom" class="input" type="date" />
+        </div>
+        <div>
+          <label class="label">To</label>
+          <input id="historyTo" class="input" type="date" />
+        </div>
+        <div>
+          <label class="label">Max results</label>
+          <input id="historyTake" class="input" type="number" min="1" max="200" step="1" value="50" />
+        </div>
+
+        <div>
+          <label class="label">Search Patient</label>
+          <input id="historySearch" class="input" type="text" placeholder="John" />
+        </div>
+
+        <div>
+          <label class="label">Filter by Staff</label>
+          <input id="historyStaff" class="input" type="text" placeholder="nperz@..." />
+        </div>
+
+        <div>
+          <label class="label">Filter by Clinic</label>
+          <input id="historyClinic" class="input" type="text" placeholder="Cedar Mill" />
+        </div>
+
+        <div>
+          <label class="label">Filter by Provider</label>
+          <input id="historyProvider" class="input" type="text" placeholder="Dr. Lastname" />
         </div>
       </div>
-      <div id="history" class="history"></div>
+
+      <div class="actions">
+        <button id="btnToday" class="btn btn--ghost" type="button">Today</button>
+        <button id="btnThisWeek" class="btn btn--ghost" type="button">This Week</button>
+        <button id="btnHistoryExport" class="btn btn--ghost" type="button">Export CSV</button>
+        <button id="btnHistoryRefresh" class="btn" type="button">Refresh</button>
+      </div>
+
+      <div class="tableWrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Date/Time</th>
+              <th>Patient</th>
+              <th>Provider</th>
+              <th>Clinic</th>
+              <th>Staff</th>
+              <th class="num">Recommended Deposit</th>
+              <th class="num">Estimated Due</th>
+              <th>Open</th>
+            </tr>
+          </thead>
+          <tbody id="historyTbody">
+            <tr><td colspan="8">No data yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
+
+    <footer class="footer">
+      <div class="muted">Internal use only. Estimates may change after claim processing.</div>
+    </footer>
   </main>
 
-  <footer class="footer">
-    <small>Uses API when available. Falls back to browser storage if APIs are missing.</small>
-  </footer>
+  <!-- PRINT LAYOUT -->
+  <section class="printSheet print-only">
+    <div class="printTopRow">
+      <div class="printMetaLeft">
+        <div class="printTiny" id="printTimestamp"></div>
+      </div>
+      <div class="printMetaRight printTiny">Surgical Deposit Quote (NES)</div>
+    </div>
+
+    <div class="printHeader">
+      <div class="printLogoWrap">
+        <img class="printLogo" src="assets/nes-logo.png" alt="NES logo" />
+      </div>
+      <div class="printHeaderText">
+        <div class="printTitle">Surgical Deposit Estimate</div>
+        <div class="printSubtitle">Estimate only. Final responsibility may change after insurance adjudication.</div>
+      </div>
+
+      <div class="printKpis">
+        <div class="printKpiBox">
+          <div class="printKpiLabel">Estimated Amount Due</div>
+          <div class="printKpiValue" id="printEstOwes">$0.00</div>
+        </div>
+        <div class="printKpiBox">
+          <div class="printKpiLabel">Recommended Deposit</div>
+          <div class="printKpiValue" id="printRecDeposit">$0.00</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="printInfoGrid">
+      <div class="printInfoCol">
+        <div class="printField"><b>Date:</b> <span id="printDate"></span></div>
+        <div class="printField"><b>Prepared By:</b> <span id="printPreparedBy"></span></div>
+      </div>
+      <div class="printInfoCol">
+        <div class="printField"><b>Patient:</b> <span id="printPatient"></span></div>
+        <div class="printField"><b>Insurance:</b> <span id="printInsurance"></span></div>
+      </div>
+      <div class="printInfoCol">
+        <div class="printField"><b>Clinic:</b> <span id="printClinic"></span></div>
+        <div class="printField"><b>Provider:</b> <span id="printProvider"></span></div>
+      </div>
+    </div>
+
+    <div class="printSectionTitle">Procedure Summary</div>
+    <table class="printTable">
+      <thead>
+        <tr>
+          <th style="width:90px;">CPT</th>
+          <th>Description</th>
+          <th style="width:70px;" class="num">Qty</th>
+          <th style="width:130px;" class="num">Adj Allowed</th>
+          <th style="width:130px;" class="num">Line Total</th>
+        </tr>
+      </thead>
+      <tbody id="printProcTbody"></tbody>
+    </table>
+
+    <div class="printTwoCol">
+      <div class="printBlock">
+        <div class="printSectionTitle">How this estimate was calculated</div>
+        <div class="printCalcRow"><span>Total Allowed (adjusted)</span><b id="printTotalAllowed">$0.00</b></div>
+        <div class="printCalcRow"><span>Deductible Applied</span><b id="printDedApplied">$0.00</b></div>
+        <div class="printCalcRow"><span>Coinsurance Amount</span><b id="printCoinsAmt">$0.00</b></div>
+        <div class="printCalcRow"><span>Copay</span><b id="printCopay">$0.00</b></div>
+        <div class="printCalcRow printCalcRow--emph"><span>Estimated Amount Due (OOP capped)</span><b id="printEstOwes2">$0.00</b></div>
+      </div>
+
+      <div class="printBlock">
+        <div class="printSectionTitle">Inputs used (insurance verification)</div>
+        <div class="printCalcRow"><span>Deductible Remaining</span><b id="printDedRem">$0.00</b></div>
+        <div class="printCalcRow"><span>Coinsurance % (patient)</span><b id="printCoinsPct">0%</b></div>
+        <div class="printCalcRow"><span>OOP Max Remaining</span><b id="printOopRem">$0.00</b></div>
+      </div>
+    </div>
+
+    <div class="printDisclaimer">
+      This is an estimate only for physician charges. Anesthesia and facility charges will be billed separately. Final responsibility may be different after claim processing.
+    </div>
+
+    <div class="printFooterTiny">
+      <span id="printUrl"></span>
+      <span class="printPageNum">1/1</span>
+    </div>
+  </section>
+
+  <script>
+    (function(){
+      const now = new Date();
+      const ts = now.toLocaleString();
+      const tsEl = document.getElementById("printTimestamp");
+      const urlEl = document.getElementById("printUrl");
+      if (tsEl) tsEl.textContent = ts;
+      if (urlEl) urlEl.textContent = window.location.origin + window.location.pathname;
+    })();
+  </script>
 
   <script src="app.js"></script>
 </body>
