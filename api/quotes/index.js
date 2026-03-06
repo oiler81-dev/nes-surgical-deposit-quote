@@ -1,115 +1,124 @@
-const { v4: uuidv4 } = require("uuid");
-const { getUserFromSwa, jsonResponse, getClient, ymdCompact, isoNow } = require("../shared/table");
+const { getTableClient } = require("../shared/table");
 
-function compact(ymd) {
-  return String(ymd || "").replaceAll("-", "");
+function json(context, status, body) {
+  context.res = {
+    status,
+    headers: { "Content-Type": "application/json" },
+    body
+  };
 }
-function localTimeString(iso) {
-  try { return new Date(iso).toLocaleString(); } catch { return iso || ""; }
+
+function safeDateKey(iso) {
+  const d = iso ? new Date(iso) : new Date();
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}${m}${day}`;
+}
+
+function normalizeQuote(body) {
+  const now = new Date().toISOString();
+  return {
+    id: body.id || crypto.randomUUID(),
+    savedAt: body.savedAt || now,
+    quoteDate: body.quoteDate || now.slice(0, 10),
+    patientName: body.patientName || "",
+    insurancePlan: body.insurancePlan || "",
+    preparedBy: body.preparedBy || "",
+    clinic: body.clinic || "",
+    provider: body.provider || "",
+    copay: Number(body.copay || 0),
+    dedRem: Number(body.dedRem || 0),
+    coinsPct: Number(body.coinsPct || 0),
+    oopRem: Number(body.oopRem || 0),
+    totalAllowed: Number(body.totalAllowed || 0),
+    dedApplied: Number(body.dedApplied || 0),
+    coinsAmt: Number(body.coinsAmt || 0),
+    estimatedDue: Number(body.estimatedDue || 0),
+    recommendedDeposit: Number(body.recommendedDeposit || 0),
+    rows: Array.isArray(body.rows) ? body.rows : []
+  };
 }
 
 module.exports = async function (context, req) {
-  const user = getUserFromSwa(req);
-  if (!user) return jsonResponse(context, 401, { ok: false, error: "Not authenticated" });
+  try {
+    const method = (req.method || "GET").toUpperCase();
+    const table = getTableClient("quotes");
 
-  // ROUTE: GET /api/quotes  -> list (history)
-  if ((req.method || "").toUpperCase() === "GET") {
-    const take = Math.min(parseInt(req.query.take || "50", 10) || 50, 200);
-    const from = compact(req.query.from || "");
-    const to = compact(req.query.to || "");
-    const staff = String(req.query.staff || "").trim().toLowerCase();
-    const clinic = String(req.query.clinic || "").trim().toLowerCase();
-    const provider = String(req.query.provider || "").trim().toLowerCase();
-    const q = String(req.query.q || "").trim().toLowerCase();
+    if (method === "POST") {
+      const quote = normalizeQuote(req.body || {});
+      const partitionKey = safeDateKey(quote.savedAt);
+      const rowKey = quote.id;
 
-    try {
-      const client = getClient();
+      await table.upsertEntity({
+        partitionKey,
+        rowKey,
+        savedAt: quote.savedAt,
+        quoteDate: quote.quoteDate,
+        patientName: quote.patientName,
+        insurancePlan: quote.insurancePlan,
+        preparedBy: quote.preparedBy,
+        clinic: quote.clinic,
+        provider: quote.provider,
+        copay: quote.copay,
+        dedRem: quote.dedRem,
+        coinsPct: quote.coinsPct,
+        oopRem: quote.oopRem,
+        totalAllowed: quote.totalAllowed,
+        dedApplied: quote.dedApplied,
+        coinsAmt: quote.coinsAmt,
+        estimatedDue: quote.estimatedDue,
+        recommendedDeposit: quote.recommendedDeposit,
+        rowsJson: JSON.stringify(quote.rows)
+      });
 
-      let filter = "";
-      if (from && to) filter = `PartitionKey ge '${from}' and PartitionKey le '${to}'`;
-      else if (from) filter = `PartitionKey ge '${from}'`;
-      else if (to) filter = `PartitionKey le '${to}'`;
+      return json(context, 200, { ok: true, id: quote.id });
+    }
 
+    if (method === "GET") {
+      const take = Math.max(1, Math.min(5000, parseInt(req.query.take || "50", 10)));
       const items = [];
-      for await (const e of client.listEntities({ queryOptions: { filter: filter || undefined } })) {
+
+      for await (const entity of table.listEntities()) {
         items.push({
-          quoteId: e.quoteId,
-          partitionKey: e.partitionKey,
-          createdAt: e.createdAt,
-          createdAtLocal: localTimeString(e.createdAt),
-          createdBy: e.createdBy,
-          patientName: e.patientName,
-          provider: e.provider,
-          clinic: e.clinic,
-          recommendedDeposit: e.recommendedDeposit,
-          estimatedOwes: e.estimatedOwes,
-          rowKey: e.rowKey
+          id: entity.rowKey,
+          savedAt: entity.savedAt,
+          quoteDate: entity.quoteDate,
+          patientName: entity.patientName,
+          insurancePlan: entity.insurancePlan,
+          preparedBy: entity.preparedBy,
+          clinic: entity.clinic,
+          provider: entity.provider,
+          copay: Number(entity.copay || 0),
+          dedRem: Number(entity.dedRem || 0),
+          coinsPct: Number(entity.coinsPct || 0),
+          oopRem: Number(entity.oopRem || 0),
+          totalAllowed: Number(entity.totalAllowed || 0),
+          dedApplied: Number(entity.dedApplied || 0),
+          coinsAmt: Number(entity.coinsAmt || 0),
+          estimatedDue: Number(entity.estimatedDue || 0),
+          recommendedDeposit: Number(entity.recommendedDeposit || 0),
+          rows: (() => {
+            try {
+              return JSON.parse(entity.rowsJson || "[]");
+            } catch {
+              return [];
+            }
+          })()
         });
-        if (items.length > 5000) break;
       }
 
-      let filtered = items;
-      if (staff) filtered = filtered.filter(x => String(x.createdBy || "").toLowerCase().includes(staff));
-      if (clinic) filtered = filtered.filter(x => String(x.clinic || "").toLowerCase().includes(clinic));
-      if (provider) filtered = filtered.filter(x => String(x.provider || "").toLowerCase().includes(provider));
-      if (q) filtered = filtered.filter(x => String(x.patientName || "").toLowerCase().includes(q));
+      items.sort((a, b) => String(b.savedAt || "").localeCompare(String(a.savedAt || "")));
 
-      filtered.sort((a, b) => String(b.rowKey || "").localeCompare(String(a.rowKey || "")));
-      filtered = filtered.slice(0, take);
-
-      return jsonResponse(context, 200, { ok: true, items: filtered });
-    } catch (err) {
-      return jsonResponse(context, 500, { ok: false, error: err.message || "Failed to list quotes" });
+      return json(context, 200, {
+        count: items.length,
+        items: items.slice(0, take)
+      });
     }
-  }
 
-  // ROUTE: POST /api/quotes -> create/save
-  try {
-    const payload = req.body || {};
-    const quoteId = uuidv4();
-
-    const now = new Date();
-    const partitionKey = ymdCompact(now);
-    const rowKey = `${now.getTime()}_${quoteId}`;
-
-    const createdAt = isoNow();
-    const createdBy = user.userDetails || "unknown";
-
-    const totals = payload.totals || {};
-    const patientName = String(payload.patientName || "").slice(0, 200);
-    const clinic = String(payload.clinic || "").slice(0, 200);
-    const provider = String(payload.provider || "").slice(0, 200);
-
-    const entity = {
-      partitionKey,
-      rowKey,
-
-      quoteId,
-      createdAt,
-      createdBy,
-
-      patientName,
-      clinic,
-      provider,
-
-      recommendedDeposit: Number(totals.recommendedDeposit || 0),
-      estimatedOwes: Number(totals.estimatedOwes || 0),
-
-      payload: JSON.stringify(payload)
-    };
-
-    const client = getClient();
-    try { await client.createTable(); } catch {}
-    await client.createEntity(entity);
-
-    return jsonResponse(context, 200, {
-      ok: true,
-      quoteId,
-      partitionKey,
-      createdAt,
-      createdBy
-    });
+    return json(context, 405, { error: "Method not allowed" });
   } catch (err) {
-    return jsonResponse(context, 500, { ok: false, error: err.message || "Failed to save quote" });
+    context.log("quotes error:", err);
+    return json(context, 500, { error: "Quotes API failed", details: String(err?.message || err) });
   }
 };
