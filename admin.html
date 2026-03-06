@@ -2,101 +2,168 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Admin RCM Dashboard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>NES Admin Reporting</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <header class="topbar">
+    <div class="wrap topbar__inner">
+      <div class="brand">
+        <img class="brand__logo" src="assets/nes-logo.png" alt="Northwest Extremity Specialists logo" />
+        <div class="brand__text">
+          <div class="brand__title">Admin Reporting</div>
+          <div class="brand__sub">NES quote history and reporting</div>
+        </div>
+      </div>
 
-<header class="topbar">
-  <div class="brand">
-    <div class="brand-title">Admin RCM Dashboard</div>
-    <div class="brand-sub">By provider • CPT utilization • revenue trends • export</div>
-  </div>
-
-  <div class="actions">
-    <a class="btn" href="index.html">Back to Quotes</a>
-    <button id="refreshBtn" class="btn">Refresh</button>
-    <button id="exportBtn" class="btn primary">Export Filtered CSV</button>
-  </div>
-</header>
-
-<main class="wrap">
-  <section class="card">
-    <h2>Filters</h2>
-    <div class="grid">
-      <label>
-        Start Date
-        <input id="startDate" type="date" />
-      </label>
-      <label>
-        End Date
-        <input id="endDate" type="date" />
-      </label>
-      <label>
-        Provider
-        <select id="providerFilter"></select>
-      </label>
+      <div class="topbar__actions">
+        <a class="btn btn--ghost" href="/index.html">Back to Tool</a>
+        <a class="btn btn--ghost" href="/.auth/logout">Logout</a>
+      </div>
     </div>
-    <div class="actions" style="justify-content:flex-end;">
-      <button id="applyBtn" class="btn">Apply</button>
-      <button id="clearBtn" class="btn danger">Clear</button>
-    </div>
-  </section>
+  </header>
 
-  <section class="card">
-    <h2>KPIs</h2>
-    <div class="kpi-grid">
-      <div class="kpi"><div class="kpi-label">Quotes</div><div class="kpi-value" id="kpiQuotes">0</div></div>
-      <div class="kpi"><div class="kpi-label">Total</div><div class="kpi-value" id="kpiTotal">$0.00</div></div>
-      <div class="kpi"><div class="kpi-label">Avg / Quote</div><div class="kpi-value" id="kpiAvg">$0.00</div></div>
-      <div class="kpi"><div class="kpi-label">Top CPT</div><div class="kpi-value" id="kpiTopCpt">—</div></div>
-    </div>
-  </section>
+  <main class="wrap layout">
+    <section class="card">
+      <div class="card__header">
+        <h2>Filters</h2>
+      </div>
 
-  <section class="card">
-    <h2>Revenue Over Time</h2>
-    <canvas id="revChart" height="120"></canvas>
-  </section>
+      <div class="grid grid--3">
+        <div>
+          <label class="label">From</label>
+          <input id="filterFrom" class="input" type="date" />
+        </div>
+        <div>
+          <label class="label">To</label>
+          <input id="filterTo" class="input" type="date" />
+        </div>
+        <div>
+          <label class="label">Provider</label>
+          <input id="filterProvider" class="input" type="text" list="adminProviderList" placeholder="Dr. Lastname" />
+          <datalist id="adminProviderList"></datalist>
+        </div>
 
-  <section class="card">
-    <h2>Totals by Provider</h2>
-    <canvas id="provChart" height="140"></canvas>
-  </section>
+        <div>
+          <label class="label">Clinic</label>
+          <input id="filterClinic" class="input" type="text" placeholder="Cedar Mill" />
+        </div>
+        <div>
+          <label class="label">Staff</label>
+          <input id="filterStaff" class="input" type="text" placeholder="Staff name" />
+        </div>
+        <div>
+          <label class="label">Max results</label>
+          <input id="filterTake" class="input" type="number" min="1" max="5000" step="1" value="5000" />
+        </div>
+      </div>
 
-  <section class="card">
-    <h2>CPT Utilization</h2>
-    <canvas id="cptChart" height="160"></canvas>
-  </section>
+      <div class="actions">
+        <button id="btnAdminToday" class="btn btn--ghost" type="button">Today</button>
+        <button id="btnAdminThisWeek" class="btn btn--ghost" type="button">This Week</button>
+        <button id="btnAdminRefresh" class="btn" type="button">Refresh</button>
+        <button id="btnAdminExport" class="btn btn--ghost" type="button">Export CSV</button>
+      </div>
+    </section>
 
-  <section class="card">
-    <h2>Detail Table</h2>
-    <div class="table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>SavedAt</th>
-            <th>Quote Date</th>
-            <th>Patient</th>
-            <th>Provider</th>
-            <th>CPT</th>
-            <th>Description</th>
-            <th>Fee</th>
-            <th>Qty</th>
-            <th>Line Total</th>
-          </tr>
-        </thead>
-        <tbody id="detailBody"></tbody>
-      </table>
-    </div>
-  </section>
-</main>
+    <section class="card">
+      <div class="card__header">
+        <h2>Summary</h2>
+      </div>
 
-<footer class="footer">
-  <small>Pulls from /api/quotes when available; local fallback otherwise.</small>
-</footer>
+      <div class="kpiGrid">
+        <div class="kpiCard">
+          <div class="kpiLabel">Quotes</div>
+          <div class="kpiValue" id="kpiQuotes">0</div>
+        </div>
+        <div class="kpiCard">
+          <div class="kpiLabel">Estimated Due</div>
+          <div class="kpiValue" id="kpiEstDue">$0.00</div>
+        </div>
+        <div class="kpiCard">
+          <div class="kpiLabel">Recommended Deposit</div>
+          <div class="kpiValue" id="kpiRecDep">$0.00</div>
+        </div>
+        <div class="kpiCard">
+          <div class="kpiLabel">Average Deposit</div>
+          <div class="kpiValue" id="kpiAvgDep">$0.00</div>
+        </div>
+      </div>
+    </section>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="admin.js"></script>
+    <section class="card">
+      <div class="card__header">
+        <h2>Totals by Provider</h2>
+      </div>
+
+      <div class="tableWrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Provider</th>
+              <th class="num">Quotes</th>
+              <th class="num">Estimated Due</th>
+              <th class="num">Recommended Deposit</th>
+            </tr>
+          </thead>
+          <tbody id="providerSummaryTbody">
+            <tr><td colspan="4">No data yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card__header">
+        <h2>CPT Utilization</h2>
+      </div>
+
+      <div class="tableWrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>CPT</th>
+              <th>Description</th>
+              <th class="num">Qty</th>
+              <th class="num">Allowed</th>
+              <th class="num">Line Total</th>
+            </tr>
+          </thead>
+          <tbody id="cptSummaryTbody">
+            <tr><td colspan="5">No data yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card__header">
+        <h2>Quote Detail</h2>
+      </div>
+
+      <div class="tableWrap">
+        <table class="table table--tight">
+          <thead>
+            <tr>
+              <th>Date/Time</th>
+              <th>Patient</th>
+              <th>Provider</th>
+              <th>Clinic</th>
+              <th>Staff</th>
+              <th class="num">Est Due</th>
+              <th class="num">Rec Deposit</th>
+              <th>CPTs</th>
+            </tr>
+          </thead>
+          <tbody id="detailTbody">
+            <tr><td colspan="8">No data yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="admin.js"></script>
 </body>
 </html>
