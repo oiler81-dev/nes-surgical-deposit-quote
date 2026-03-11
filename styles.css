@@ -126,12 +126,14 @@ html, body{
 
 .grid--2{ grid-template-columns: repeat(2, minmax(0,1fr)); }
 .grid--3{ grid-template-columns: repeat(3, minmax(0,1fr)); }
+.grid--4{ grid-template-columns: repeat(4, minmax(0,1fr)); }
 
 @media (max-width: 980px){
+  .grid--4{ grid-template-columns: repeat(2, minmax(0,1fr)); }
   .grid--3{ grid-template-columns: repeat(2, minmax(0,1fr)); }
 }
 @media (max-width: 640px){
-  .grid--2, .grid--3{ grid-template-columns: 1fr; }
+  .grid--2, .grid--3, .grid--4{ grid-template-columns: 1fr; }
   .brand__sub{ display:none; }
 }
 
@@ -143,7 +145,7 @@ html, body{
   margin-bottom: 6px;
 }
 
-.input, .inputFile{
+.input, .inputFile, select.input{
   width: 100%;
   padding: 11px 12px;
   border: 1px solid #d7e2ee;
@@ -153,7 +155,7 @@ html, body{
   background: #fff;
 }
 
-.input:focus, .inputFile:focus, .table input:focus{
+.input:focus, .inputFile:focus, .table input:focus, select.input:focus{
   border-color: rgba(14,47,79,.45);
   box-shadow: 0 0 0 4px rgba(14,47,79,.10);
 }
@@ -169,6 +171,7 @@ html, body{
   display:flex;
   gap: 10px;
   align-items:center;
+  flex-wrap: wrap;
 }
 
 .pill{
@@ -274,10 +277,10 @@ html, body{
 .totals__grid{
   display:grid;
   gap: 12px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-@media (max-width: 980px){
+@media (max-width: 1100px){
   .totals__grid{ grid-template-columns: repeat(2, minmax(0,1fr)); }
 }
 @media (max-width: 640px){
@@ -355,6 +358,53 @@ html, body{
 
 .muted{ color: var(--muted); }
 
+.hiddenBlock{
+  display:none !important;
+}
+
+.divider{
+  border-top: 1px solid var(--line);
+  margin: 16px 0;
+}
+
+.estimateTypeSwitch{
+  display:flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.seg{
+  position: relative;
+  display:inline-flex;
+  align-items:center;
+}
+
+.seg input{
+  position:absolute;
+  opacity:0;
+  pointer-events:none;
+}
+
+.seg span{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width: 220px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, #ffffff, #f7fbff);
+  color: var(--navy);
+  font-weight: 900;
+  cursor:pointer;
+}
+
+.seg input:checked + span{
+  border-color: rgba(14,47,79,.35);
+  background: var(--navy);
+  color: #fff;
+}
+
 .kpiGrid{
   display:grid;
   gap:12px;
@@ -406,7 +456,7 @@ html, body{
 
   @page{
     size: Letter;
-    margin: 0.55in;
+    margin: 0.5in;
   }
 
   *{
@@ -432,15 +482,15 @@ html, body{
   display:flex;
   justify-content:space-between;
   align-items:center;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .printHeader{
   display:grid;
-  grid-template-columns: 120px 1fr 280px;
-  gap: 12px;
+  grid-template-columns: 100px 1fr 260px;
+  gap: 10px;
   align-items:center;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .printLogoWrap{
@@ -450,22 +500,22 @@ html, body{
 }
 
 .printLogo{
-  width: 95px;
+  width: 82px;
   height: auto;
   object-fit: contain;
   display:block;
 }
 
 .printTitle{
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 1000;
   color: #0e2f4f;
   line-height: 1.05;
 }
 
 .printSubtitle{
-  margin-top: 4px;
-  font-size: 12px;
+  margin-top: 3px;
+  font-size: 10px;
   color: #333;
   font-weight: 700;
 }
@@ -473,24 +523,24 @@ html, body{
 .printKpis{
   display:grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 8px;
 }
 
 .printKpiBox{
   border: 1px solid #d7e2ee;
-  border-radius: 12px;
-  padding: 10px 12px;
+  border-radius: 10px;
+  padding: 8px 10px;
 }
 
 .printKpiLabel{
-  font-size: 11px;
+  font-size: 10px;
   color: #333;
   font-weight: 800;
 }
 
 .printKpiValue{
-  margin-top: 4px;
-  font-size: 20px;
+  margin-top: 3px;
+  font-size: 17px;
   font-weight: 1000;
   color: #0e2f4f;
   font-variant-numeric: tabular-nums;
@@ -499,21 +549,21 @@ html, body{
 .printInfoGrid{
   display:grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .printField{
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 11px;
+  line-height: 1.3;
 }
 
 .printSectionTitle{
-  margin-top: 8px;
-  margin-bottom: 6px;
+  margin-top: 6px;
+  margin-bottom: 5px;
   font-weight: 1000;
   color: #0e2f4f;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .printTable{
@@ -525,9 +575,9 @@ html, body{
 }
 
 .printTable th, .printTable td{
-  padding: 8px 8px;
+  padding: 6px 7px;
   border-bottom: 1px solid #e5edf5;
-  font-size: 11px;
+  font-size: 10px;
   vertical-align: top;
 }
 
@@ -543,42 +593,42 @@ html, body{
 .printTwoCol{
   display:grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-top: 10px;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .printBlock{
   border: 1px solid #e5edf5;
-  border-radius: 12px;
-  padding: 10px 12px;
+  border-radius: 10px;
+  padding: 8px 10px;
 }
 
 .printCalcRow{
   display:flex;
   justify-content:space-between;
   gap: 10px;
-  padding: 8px 0;
+  padding: 6px 0;
   border-bottom: 1px solid #e5edf5;
-  font-size: 11px;
+  font-size: 10px;
 }
 .printCalcRow:last-child{ border-bottom: none; }
 .printCalcRow b{ font-weight: 1000; }
 .printCalcRow--emph span{ font-weight: 1000; }
 
 .printDisclaimer{
-  margin-top: 10px;
-  padding-top: 8px;
+  margin-top: 8px;
+  padding-top: 6px;
   border-top: 1px solid #e5edf5;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   color: #111;
 }
 
 .printFooterTiny{
-  margin-top: 8px;
+  margin-top: 6px;
   display:flex;
   justify-content:space-between;
   align-items:center;
-  font-size: 10px;
+  font-size: 9px;
   color: #333;
 }
