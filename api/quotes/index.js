@@ -17,28 +17,63 @@ function safeDateKey(iso) {
   return `${y}${m}${day}`;
 }
 
+function num(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeRow(row = {}) {
+  return {
+    provider: row.provider || "",
+    cpt: row.cpt || "",
+    modifier: row.modifier || "",
+    desc: row.desc || "",
+    qty: num(row.qty || 1),
+    billed: num(row.billed || 0),
+    allowed: num(row.allowed ?? row.fee ?? 0),
+    adjPct: num(row.adjPct || 0),
+    adjAllowed: num(row.adjAllowed || 0),
+    lineTotal: num(row.lineTotal || 0)
+  };
+}
+
 function normalizeQuote(body) {
   const now = new Date().toISOString();
   return {
     id: body.id || randomUUID(),
     savedAt: body.savedAt || now,
     quoteDate: body.quoteDate || now.slice(0, 10),
+    estimateType: body.estimateType === "orthotics" ? "orthotics" : "surgical",
+    orthoticBasis: body.orthoticBasis === "selfPay" ? "selfPay" : (body.orthoticBasis === "insurance" ? "insurance" : ""),
+    orthoticPayer: body.orthoticPayer || "",
+    orthoticAllowableEach: num(body.orthoticAllowableEach || 0),
+    orthoticSelfPayEach: num(body.orthoticSelfPayEach || 0),
     patientName: body.patientName || "",
     insurancePlan: body.insurancePlan || "",
     preparedBy: body.preparedBy || "",
     clinic: body.clinic || "",
     provider: body.provider || "",
-    copay: Number(body.copay || 0),
-    dedRem: Number(body.dedRem || 0),
-    coinsPct: Number(body.coinsPct || 0),
-    oopRem: Number(body.oopRem || 0),
-    totalAllowed: Number(body.totalAllowed || 0),
-    dedApplied: Number(body.dedApplied || 0),
-    coinsAmt: Number(body.coinsAmt || 0),
-    estimatedDue: Number(body.estimatedDue || 0),
-    recommendedDeposit: Number(body.recommendedDeposit || 0),
-    rows: Array.isArray(body.rows) ? body.rows : []
+    copay: num(body.copay || 0),
+    dedRem: num(body.dedRem || 0),
+    coinsPct: num(body.coinsPct || 0),
+    oopRem: num(body.oopRem || 0),
+    totalAllowed: num(body.totalAllowed || 0),
+    dedApplied: num(body.dedApplied || 0),
+    coinsAmt: num(body.coinsAmt || 0),
+    estimatedDue: num(body.estimatedDue || 0),
+    insuranceResponsibility: num(body.insuranceResponsibility || 0),
+    recommendedDeposit: num(body.recommendedDeposit || 0),
+    rows: Array.isArray(body.rows) ? body.rows.map(normalizeRow) : []
   };
+}
+
+function parseRows(rowsJson) {
+  try {
+    const rows = JSON.parse(rowsJson || "[]");
+    return Array.isArray(rows) ? rows.map(normalizeRow) : [];
+  } catch {
+    return [];
+  }
 }
 
 module.exports = async function (context, req) {
@@ -56,6 +91,11 @@ module.exports = async function (context, req) {
         rowKey,
         savedAt: quote.savedAt,
         quoteDate: quote.quoteDate,
+        estimateType: quote.estimateType,
+        orthoticBasis: quote.orthoticBasis,
+        orthoticPayer: quote.orthoticPayer,
+        orthoticAllowableEach: quote.orthoticAllowableEach,
+        orthoticSelfPayEach: quote.orthoticSelfPayEach,
         patientName: quote.patientName,
         insurancePlan: quote.insurancePlan,
         preparedBy: quote.preparedBy,
@@ -69,6 +109,7 @@ module.exports = async function (context, req) {
         dedApplied: quote.dedApplied,
         coinsAmt: quote.coinsAmt,
         estimatedDue: quote.estimatedDue,
+        insuranceResponsibility: quote.insuranceResponsibility,
         recommendedDeposit: quote.recommendedDeposit,
         rowsJson: JSON.stringify(quote.rows)
       });
@@ -85,27 +126,27 @@ module.exports = async function (context, req) {
           id: entity.rowKey,
           savedAt: entity.savedAt,
           quoteDate: entity.quoteDate,
+          estimateType: entity.estimateType || "surgical",
+          orthoticBasis: entity.orthoticBasis || "",
+          orthoticPayer: entity.orthoticPayer || "",
+          orthoticAllowableEach: num(entity.orthoticAllowableEach || 0),
+          orthoticSelfPayEach: num(entity.orthoticSelfPayEach || 0),
           patientName: entity.patientName,
           insurancePlan: entity.insurancePlan,
           preparedBy: entity.preparedBy,
           clinic: entity.clinic,
           provider: entity.provider,
-          copay: Number(entity.copay || 0),
-          dedRem: Number(entity.dedRem || 0),
-          coinsPct: Number(entity.coinsPct || 0),
-          oopRem: Number(entity.oopRem || 0),
-          totalAllowed: Number(entity.totalAllowed || 0),
-          dedApplied: Number(entity.dedApplied || 0),
-          coinsAmt: Number(entity.coinsAmt || 0),
-          estimatedDue: Number(entity.estimatedDue || 0),
-          recommendedDeposit: Number(entity.recommendedDeposit || 0),
-          rows: (() => {
-            try {
-              return JSON.parse(entity.rowsJson || "[]");
-            } catch {
-              return [];
-            }
-          })()
+          copay: num(entity.copay || 0),
+          dedRem: num(entity.dedRem || 0),
+          coinsPct: num(entity.coinsPct || 0),
+          oopRem: num(entity.oopRem || 0),
+          totalAllowed: num(entity.totalAllowed || 0),
+          dedApplied: num(entity.dedApplied || 0),
+          coinsAmt: num(entity.coinsAmt || 0),
+          estimatedDue: num(entity.estimatedDue || 0),
+          insuranceResponsibility: num(entity.insuranceResponsibility || 0),
+          recommendedDeposit: num(entity.recommendedDeposit || 0),
+          rows: parseRows(entity.rowsJson)
         });
       }
 
