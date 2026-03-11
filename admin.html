@@ -30,15 +30,35 @@
         <h2>Filters</h2>
       </div>
 
-      <div class="grid grid--3">
+      <div class="grid grid--4">
         <div>
           <label class="label">From</label>
           <input id="filterFrom" class="input" type="date" />
         </div>
+
         <div>
           <label class="label">To</label>
           <input id="filterTo" class="input" type="date" />
         </div>
+
+        <div>
+          <label class="label">Estimate Type</label>
+          <select id="filterType" class="input">
+            <option value="">All</option>
+            <option value="surgical">Surgical / Procedure</option>
+            <option value="orthotics">Orthotics</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="label">Orthotic Basis</label>
+          <select id="filterBasis" class="input">
+            <option value="">All</option>
+            <option value="insurance">Insurance</option>
+            <option value="selfPay">Self-Pay</option>
+          </select>
+        </div>
+
         <div>
           <label class="label">Provider</label>
           <input id="filterProvider" class="input" type="text" list="adminProviderList" placeholder="Dr. Lastname" />
@@ -49,10 +69,22 @@
           <label class="label">Clinic</label>
           <input id="filterClinic" class="input" type="text" placeholder="Cedar Mill" />
         </div>
+
         <div>
           <label class="label">Staff</label>
           <input id="filterStaff" class="input" type="text" placeholder="Staff name" />
         </div>
+
+        <div>
+          <label class="label">Orthotic Payer</label>
+          <input id="filterOrthoticPayer" class="input" type="text" placeholder="Aetna" />
+        </div>
+
+        <div>
+          <label class="label">Patient</label>
+          <input id="filterPatient" class="input" type="text" placeholder="Last, First" />
+        </div>
+
         <div>
           <label class="label">Max results</label>
           <input id="filterTake" class="input" type="number" min="1" max="5000" step="1" value="5000" />
@@ -90,6 +122,25 @@
           <div class="kpiValue" id="kpiAvgDep">$0.00</div>
         </div>
       </div>
+
+      <div class="kpiGrid" style="margin-top:12px;">
+        <div class="kpiCard">
+          <div class="kpiLabel">Surgical Quotes</div>
+          <div class="kpiValue" id="kpiSurgicalQuotes">0</div>
+        </div>
+        <div class="kpiCard">
+          <div class="kpiLabel">Orthotics Quotes</div>
+          <div class="kpiValue" id="kpiOrthoticsQuotes">0</div>
+        </div>
+        <div class="kpiCard">
+          <div class="kpiLabel">Orthotics Insurance</div>
+          <div class="kpiValue" id="kpiOrthoticsInsurance">0</div>
+        </div>
+        <div class="kpiCard">
+          <div class="kpiLabel">Orthotics Self-Pay</div>
+          <div class="kpiValue" id="kpiOrthoticsSelfPay">0</div>
+        </div>
+      </div>
     </section>
 
     <section class="card">
@@ -103,12 +154,14 @@
             <tr>
               <th>Provider</th>
               <th class="num">Quotes</th>
+              <th class="num">Surgical</th>
+              <th class="num">Orthotics</th>
               <th class="num">Estimated Due</th>
               <th class="num">Recommended Deposit</th>
             </tr>
           </thead>
           <tbody id="providerSummaryTbody">
-            <tr><td colspan="4">No data yet.</td></tr>
+            <tr><td colspan="6">No data yet.</td></tr>
           </tbody>
         </table>
       </div>
@@ -116,22 +169,24 @@
 
     <section class="card">
       <div class="card__header">
-        <h2>CPT Utilization</h2>
+        <h2>Code Utilization</h2>
       </div>
 
       <div class="tableWrap">
         <table class="table">
           <thead>
             <tr>
-              <th>CPT</th>
+              <th>Code</th>
+              <th>Modifier</th>
               <th>Description</th>
               <th class="num">Qty</th>
+              <th class="num">Billed</th>
               <th class="num">Allowed</th>
               <th class="num">Line Total</th>
             </tr>
           </thead>
           <tbody id="cptSummaryTbody">
-            <tr><td colspan="5">No data yet.</td></tr>
+            <tr><td colspan="7">No data yet.</td></tr>
           </tbody>
         </table>
       </div>
@@ -147,17 +202,20 @@
           <thead>
             <tr>
               <th>Date/Time</th>
+              <th>Type</th>
+              <th>Basis</th>
               <th>Patient</th>
               <th>Provider</th>
               <th>Clinic</th>
               <th>Staff</th>
+              <th>Orthotic Payer</th>
               <th class="num">Est Due</th>
               <th class="num">Rec Deposit</th>
-              <th>CPTs</th>
+              <th>Codes</th>
             </tr>
           </thead>
           <tbody id="detailTbody">
-            <tr><td colspan="8">No data yet.</td></tr>
+            <tr><td colspan="11">No data yet.</td></tr>
           </tbody>
         </table>
       </div>
