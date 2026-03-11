@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>NES Surgical Deposit Estimate</title>
+  <title>NES Estimate Tool</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 
@@ -13,8 +13,8 @@
       <div class="brand">
         <img class="brand__logo" src="assets/nes-logo.png" alt="Northwest Extremity Specialists logo" />
         <div class="brand__text">
-          <div class="brand__title">Surgical Deposit Estimate</div>
-          <div class="brand__sub">Estimate tool (NES)</div>
+          <div class="brand__title" id="appTitle">NES Estimate Tool</div>
+          <div class="brand__sub" id="appSubtitle">Surgical / Procedure and Orthotics</div>
         </div>
       </div>
 
@@ -28,11 +28,34 @@
   <main class="wrap layout no-print">
     <div class="pillRow">
       <div class="pill pill--muted" id="whoAmI">Signed in</div>
+      <div class="pill pill--muted" id="modePill">Mode: Surgical / Procedure</div>
     </div>
 
     <section class="card">
       <div class="card__header">
-        <h2>1) Fee Schedule</h2>
+        <h2>1) Estimate Type</h2>
+      </div>
+
+      <div class="estimateTypeSwitch" role="radiogroup" aria-label="Estimate type">
+        <label class="seg">
+          <input type="radio" name="estimateType" value="surgical" checked />
+          <span>Surgical / Procedure</span>
+        </label>
+        <label class="seg">
+          <input type="radio" name="estimateType" value="orthotics" />
+          <span>Orthotics</span>
+        </label>
+      </div>
+
+      <div class="hint">
+        Surgical uses your CPT fee schedule and multi-procedure logic.
+        Orthotics uses two fixed L3000 lines, RT and LT, with no reduction on line 2.
+      </div>
+    </section>
+
+    <section class="card surgical-only" id="feeScheduleCard">
+      <div class="card__header">
+        <h2>2) Fee Schedule</h2>
         <div class="card__headerRight">
           <a class="link" href="feeSchedule.sample.csv" download>Download fee schedule CSV</a>
         </div>
@@ -42,7 +65,11 @@
         <div>
           <label class="label">Upload Fee Schedule CSV</label>
           <input id="feeFile" class="inputFile" type="file" accept=".csv" />
-          <div class="hint">Primary source is the root CSV file. Manual upload is only a fallback. Required columns: <b>CPT</b>, <b>Description</b> (optional), and an <b>Allowed</b> column (Allowed/AllowedAmount/Allowable).</div>
+          <div class="hint">
+            Primary source is the root CSV file. Manual upload is only a fallback.
+            Required columns: <b>CPT</b>, <b>Description</b> (optional), and an <b>Allowed</b> column
+            (Allowed/AllowedAmount/Allowable).
+          </div>
         </div>
 
         <div class="feeStatus">
@@ -73,7 +100,7 @@
 
     <section class="card">
       <div class="card__header">
-        <h2>2) Quote Inputs</h2>
+        <h2 id="quoteInputsTitle">3) Quote Inputs</h2>
       </div>
 
       <datalist id="cptList"></datalist>
@@ -144,11 +171,52 @@
           <input id="oopRem" class="input" type="number" min="0" step="0.01" value="999999" />
         </div>
       </div>
+
+      <div id="orthoticsInputs" class="orthotics-only hiddenBlock">
+        <div class="divider"></div>
+
+        <div class="grid grid--4">
+          <div>
+            <label class="label">Orthotics Estimate Basis</label>
+            <select id="orthoticBasis" class="input">
+              <option value="insurance" selected>Insurance</option>
+              <option value="selfPay">Self-Pay</option>
+            </select>
+          </div>
+
+          <div class="orthotic-insurance-only">
+            <label class="label">Orthotics Payer</label>
+            <select id="orthoticPayer" class="input">
+              <option value="">Select payer</option>
+            </select>
+          </div>
+
+          <div class="orthotic-insurance-only">
+            <label class="label">Allowable Per L3000</label>
+            <input id="orthoticAllowableEach" class="input" type="number" min="0" step="0.01" value="0" />
+            <div class="hint">Auto-fills from payer. You can manually override if needed.</div>
+          </div>
+
+          <div class="orthotic-selfpay-only hiddenBlock">
+            <label class="label">Self-Pay Amount Per L3000</label>
+            <input id="orthoticSelfPayEach" class="input" type="number" min="0" step="0.01" value="680" />
+            <div class="hint">Use the approved self-pay amount per side.</div>
+          </div>
+        </div>
+
+        <div class="hint orthotic-insurance-only">
+          Orthotics insurance mode uses 2 lines of L3000, one RT and one LT, both at 100% of the selected allowable.
+        </div>
+
+        <div class="hint orthotic-selfpay-only hiddenBlock">
+          Self-pay orthotics ignores deductible, coinsurance, and OOP max. The patient responsibility becomes the self-pay amount for both sides.
+        </div>
+      </div>
     </section>
 
-    <section class="card">
+    <section class="card surgical-only" id="proceduresCard">
       <div class="card__header">
-        <h2>3) Procedures</h2>
+        <h2>4) Procedures</h2>
       </div>
 
       <div class="hint">Multi-procedure adjustment: 1st CPT = 100%, additional CPTs = 50%.</div>
@@ -171,11 +239,44 @@
           <tbody id="procTbody"></tbody>
         </table>
       </div>
+    </section>
+
+    <section class="card orthotics-only hiddenBlock" id="orthoticsCard">
+      <div class="card__header">
+        <h2>4) Orthotics Preview</h2>
+      </div>
+
+      <div class="hint">
+        Fixed build: 2 lines only, L3000 RT and L3000 LT, billed at $680 each, no reduction on line 2.
+      </div>
+
+      <div class="tableWrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th style="width:120px;">Code</th>
+              <th style="width:90px;">Modifier</th>
+              <th>Description</th>
+              <th class="num" style="width:120px;">Billed</th>
+              <th class="num" style="width:120px;">Allowed</th>
+              <th class="num" style="width:130px;">Line Total</th>
+            </tr>
+          </thead>
+          <tbody id="orthoticsTbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card__header">
+        <h2>5) Estimate Summary</h2>
+      </div>
 
       <div class="totals">
         <div class="totals__grid">
           <div class="totals__item">
-            <div class="totals__label">Total Allowed (after multi-proc adjustment)</div>
+            <div class="totals__label" id="totalAllowedLabel">Total Allowed</div>
             <div class="totals__value" id="totalAllowed">$0.00</div>
           </div>
 
@@ -194,8 +295,13 @@
             <div class="totals__value" id="copayOut">$0.00</div>
           </div>
 
+          <div class="totals__item">
+            <div class="totals__label">Estimated Insurance Responsibility</div>
+            <div class="totals__value" id="insResp">$0.00</div>
+          </div>
+
           <div class="totals__item totals__item--highlight">
-            <div class="totals__label">Estimated Amount Due (OOP capped)</div>
+            <div class="totals__label" id="estOwesLabel">Estimated Amount Due (OOP capped)</div>
             <div class="totals__value" id="estOwes">$0.00</div>
           </div>
 
@@ -215,10 +321,10 @@
 
     <section class="card">
       <div class="card__header">
-        <h2>4) Quote History</h2>
+        <h2>6) Quote History</h2>
       </div>
 
-      <div class="grid grid--3">
+      <div class="grid grid--4">
         <div>
           <label class="label">From</label>
           <input id="historyFrom" class="input" type="date" />
@@ -230,6 +336,14 @@
         <div>
           <label class="label">Max results</label>
           <input id="historyTake" class="input" type="number" min="1" max="200" step="1" value="50" />
+        </div>
+        <div>
+          <label class="label">Estimate Type</label>
+          <select id="historyType" class="input">
+            <option value="">All</option>
+            <option value="surgical">Surgical / Procedure</option>
+            <option value="orthotics">Orthotics</option>
+          </select>
         </div>
 
         <div>
@@ -265,6 +379,7 @@
           <thead>
             <tr>
               <th>Date/Time</th>
+              <th>Type</th>
               <th>Patient</th>
               <th>Provider</th>
               <th>Clinic</th>
@@ -275,7 +390,7 @@
             </tr>
           </thead>
           <tbody id="historyTbody">
-            <tr><td colspan="8">No data yet.</td></tr>
+            <tr><td colspan="9">No data yet.</td></tr>
           </tbody>
         </table>
       </div>
@@ -291,7 +406,7 @@
       <div class="printMetaLeft">
         <div class="printTiny" id="printTimestamp"></div>
       </div>
-      <div class="printMetaRight printTiny">Surgical Deposit Quote (NES)</div>
+      <div class="printMetaRight printTiny" id="printTopRight">NES Estimate Quote</div>
     </div>
 
     <div class="printHeader">
@@ -299,8 +414,8 @@
         <img class="printLogo" src="assets/nes-logo.png" alt="NES logo" />
       </div>
       <div class="printHeaderText">
-        <div class="printTitle">Surgical Deposit Estimate</div>
-        <div class="printSubtitle">Estimate only. Final responsibility may change after insurance adjudication.</div>
+        <div class="printTitle" id="printTitle">NES Estimate</div>
+        <div class="printSubtitle" id="printSubtitle">Estimate only. Final responsibility may change after insurance adjudication.</div>
       </div>
 
       <div class="printKpis">
@@ -330,15 +445,17 @@
       </div>
     </div>
 
-    <div class="printSectionTitle">Procedure Summary</div>
+    <div class="printSectionTitle" id="printSummaryTitle">Procedure Summary</div>
     <table class="printTable">
       <thead>
         <tr>
-          <th style="width:90px;">CPT</th>
+          <th style="width:90px;">Code</th>
+          <th style="width:80px;">Mod</th>
           <th>Description</th>
           <th style="width:70px;" class="num">Qty</th>
-          <th style="width:130px;" class="num">Adj Allowed</th>
-          <th style="width:130px;" class="num">Line Total</th>
+          <th style="width:110px;" class="num">Billed</th>
+          <th style="width:120px;" class="num">Adj Allowed</th>
+          <th style="width:120px;" class="num">Line Total</th>
         </tr>
       </thead>
       <tbody id="printProcTbody"></tbody>
@@ -347,23 +464,26 @@
     <div class="printTwoCol">
       <div class="printBlock">
         <div class="printSectionTitle">How this estimate was calculated</div>
-        <div class="printCalcRow"><span>Total Allowed (adjusted)</span><b id="printTotalAllowed">$0.00</b></div>
+        <div class="printCalcRow"><span id="printTotalAllowedLabel">Total Allowed</span><b id="printTotalAllowed">$0.00</b></div>
         <div class="printCalcRow"><span>Deductible Applied</span><b id="printDedApplied">$0.00</b></div>
         <div class="printCalcRow"><span>Coinsurance Amount</span><b id="printCoinsAmt">$0.00</b></div>
         <div class="printCalcRow"><span>Copay</span><b id="printCopay">$0.00</b></div>
-        <div class="printCalcRow printCalcRow--emph"><span>Estimated Amount Due (OOP capped)</span><b id="printEstOwes2">$0.00</b></div>
+        <div class="printCalcRow"><span>Estimated Insurance Responsibility</span><b id="printInsResp">$0.00</b></div>
+        <div class="printCalcRow printCalcRow--emph"><span id="printEstOwesLabel">Estimated Amount Due (OOP capped)</span><b id="printEstOwes2">$0.00</b></div>
       </div>
 
       <div class="printBlock">
-        <div class="printSectionTitle">Inputs used (insurance verification)</div>
+        <div class="printSectionTitle">Inputs used</div>
         <div class="printCalcRow"><span>Deductible Remaining</span><b id="printDedRem">$0.00</b></div>
         <div class="printCalcRow"><span>Coinsurance % (patient)</span><b id="printCoinsPct">0%</b></div>
         <div class="printCalcRow"><span>OOP Max Remaining</span><b id="printOopRem">$0.00</b></div>
+        <div class="printCalcRow"><span>Estimate Type</span><b id="printEstimateType">Surgical / Procedure</b></div>
       </div>
     </div>
 
-    <div class="printDisclaimer">
-      This is an estimate only for physician charges. Anesthesia and facility charges will be billed separately. Final responsibility may be different after claim processing.
+    <div class="printDisclaimer" id="printDisclaimer">
+      This is an estimate only for physician charges. Anesthesia and facility charges will be billed separately.
+      Final responsibility may be different after claim processing.
     </div>
 
     <div class="printFooterTiny">
