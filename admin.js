@@ -1,9 +1,8 @@
 const $ = (id) => document.getElementById(id);
 
 const state = {
-  report: null,
-  providers: [],
-  filteredItems: []
+  items: [],
+  providers: []
 };
 
 function money(n) {
@@ -72,79 +71,135 @@ async function loadProviders() {
     .join("");
 }
 
+function loadLocalHistory() {
+  try {
+    return JSON.parse(localStorage.getItem("nes_estimate_history_v4") || "[]");
+  } catch {
+    return [];
+  }
+}
+
 function getFilters() {
   return {
     from: $("filterFrom")?.value || "",
     to: $("filterTo")?.value || "",
-    type: ($("filterType")?.value || "").trim(),
-    basis: ($("filterBasis")?.value || "").trim(),
-    provider: ($("filterProvider")?.value || "").trim(),
-    clinic: ($("filterClinic")?.value || "").trim(),
-    staff: ($("filterStaff")?.value || "").trim(),
-    orthoticPayer: ($("filterOrthoticPayer")?.value || "").trim(),
-    patient: ($("filterPatient")?.value || "").trim(),
+    type: ($("filterType")?.value || "").trim().toLowerCase(),
+    basis: ($("filterBasis")?.value || "").trim().toLowerCase(),
+    provider: ($("filterProvider")?.value || "").trim().toLowerCase(),
+    clinic: ($("filterClinic")?.value || "").trim().toLowerCase(),
+    staff: ($("filterStaff")?.value || "").trim().toLowerCase(),
+    orthoticPayer: ($("filterOrthoticPayer")?.value || "").trim().toLowerCase(),
+    patient: ($("filterPatient")?.value || "").trim().toLowerCase(),
     take: Math.max(1, Math.min(5000, Math.floor(parseNum($("filterTake")?.value || 5000)) || 5000))
   };
 }
 
-function buildReportUrl() {
-  const f = getFilters();
-  const params = new URLSearchParams();
-
-  if (f.from) params.set("from", f.from);
-  if (f.to) params.set("to", f.to);
-  if (f.type) params.set("type", f.type);
-  if (f.basis) params.set("basis", f.basis);
-  if (f.provider) params.set("provider", f.provider);
-  if (f.clinic) params.set("clinic", f.clinic);
-  if (f.staff) params.set("staff", f.staff);
-  if (f.orthoticPayer) params.set("orthoticPayer", f.orthoticPayer);
-  if (f.patient) params.set("patient", f.patient);
-
-  return `/api/reports/admin-report?${params.toString()}`;
+function itemDateYmd(q) {
+  const raw = q.quoteDate || q.savedAt;
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-async function loadReport() {
-  const url = buildReportUrl();
-  const data = await apiGet(url);
+function quoteTypeLabel(q) {
+  return q.estimateType === "orthotics" ? "Orthotics" : "Surgical / Procedure";
+}
 
-  if (!data || !data.ok) {
-    state.report = null;
-    state.filteredItems = [];
+function quoteBasisLabel(q) {
+  if (q.estimateType !== "orthotics") return "";
+  return q.orthoticBasis === "selfPay" ? "Self-Pay" : "Insurance";
+}
+
+function applyFilters(items) {
+  const f = getFilters();
+
+  return items.filter(q => {
+    const ymd = itemDateYmd(q);
+    const provider = String(q.provider || q.rows?.[0]?.provider || "").toLowerCase();
+    const clinic = String(q.clinic || "").toLowerCase();
+    const staff = String(q.preparedBy || "").toLowerCase();
+    const type = String(q.estimateType || "surgical").toLowerCase();
+    const basis = String(q.orthoticBasis || "").toLowerCase();
+    const orthoticPayer = String(q.orthoticPayer || "").toLowerCase();
+    const patient = String(q.patientName || "").toLowerCase();
+
+    if (f.from && ymd && ymd < f.from) return false;
+    if (f.to && ymd && ymd > f.to) return false;
+    if (f.type && type !== f.type) return false;
+    if (f.basis && basis !== f.basis) return false;
+    if (f.provider && !provider.includes(f.provider)) return false;
+    if (f.clinic && !clinic.includes(f.clinic)) return false;
+    if (f.staff && !staff.includes(f.staff)) return false;
+    if (f.orthoticPayer && !orthoticPayer.includes(f.orthoticPayer)) return false;
+    if (f.patient && !patient.includes(f.patient)) return false;
+
+    return true;
+  }).slice(0, f.take);
+}
+
+async function loadItems() {
+  const take = Math.max(1, Math.min(5000, Math.floor(parseNum($("filterTake")?.value || 5000)) || 5000));
+  const api = await apiGet(`/api/quotes?take=${take}`);
+  if (api && Array.isArray(api.items)) {
+    state.items = api.items;
     return;
   }
 
-  state.report = data;
-  state.filteredItems = Array.isArray(data.exportItems)
-    ? data.exportItems.slice(0, getFilters().take)
-    : [];
+  state.items = loadLocalHistory();
 }
 
-function renderSummary() {
-  const s = state.report?.summary || {
-    quotes: 0,
-    deposits: 0,
-    due: 0,
-    surgicalQuotes: 0,
-    orthoticsQuotes: 0,
-    orthoticsInsuranceQuotes: 0,
-    orthoticsSelfPayQuotes: 0
-  };
+function renderSummary(items) {
+  const quoteCount = items.length;
+  const estDue = items.reduce((s, q) => s + parseNum(q.estimatedDue || 0), 0);
+  const recDep = items.reduce((s, q) => s + parseNum(q.recommendedDeposit || 0), 0);
+  const avgDep = quoteCount ? recDep / quoteCount : 0;
 
-  $("kpiQuotes").textContent = String(s.quotes || 0);
-  $("kpiEstDue").textContent = money(parseNum(s.due || 0));
-  $("kpiRecDep").textContent = money(parseNum(s.deposits || 0));
-  $("kpiAvgDep").textContent = money((s.quotes || 0) ? parseNum(s.deposits || 0) / s.quotes : 0);
+  const surgicalQuotes = items.filter(q => (q.estimateType || "surgical") === "surgical").length;
+  const orthoticsQuotes = items.filter(q => q.estimateType === "orthotics").length;
+  const orthoticsInsurance = items.filter(q => q.estimateType === "orthotics" && q.orthoticBasis === "insurance").length;
+  const orthoticsSelfPay = items.filter(q => q.estimateType === "orthotics" && q.orthoticBasis === "selfPay").length;
 
-  $("kpiSurgicalQuotes").textContent = String(s.surgicalQuotes || 0);
-  $("kpiOrthoticsQuotes").textContent = String(s.orthoticsQuotes || 0);
-  $("kpiOrthoticsInsurance").textContent = String(s.orthoticsInsuranceQuotes || 0);
-  $("kpiOrthoticsSelfPay").textContent = String(s.orthoticsSelfPayQuotes || 0);
+  $("kpiQuotes").textContent = String(quoteCount);
+  $("kpiEstDue").textContent = money(estDue);
+  $("kpiRecDep").textContent = money(recDep);
+  $("kpiAvgDep").textContent = money(avgDep);
+  $("kpiSurgicalQuotes").textContent = String(surgicalQuotes);
+  $("kpiOrthoticsQuotes").textContent = String(orthoticsQuotes);
+  $("kpiOrthoticsInsurance").textContent = String(orthoticsInsurance);
+  $("kpiOrthoticsSelfPay").textContent = String(orthoticsSelfPay);
 }
 
-function renderProviderSummary() {
+function renderProviderSummary(items) {
+  const map = new Map();
+
+  items.forEach(q => {
+    const provider = q.provider || q.rows?.[0]?.provider || "Unassigned";
+    const estDue = parseNum(q.estimatedDue || 0);
+    const recDep = parseNum(q.recommendedDeposit || 0);
+    const type = q.estimateType === "orthotics" ? "orthotics" : "surgical";
+
+    if (!map.has(provider)) {
+      map.set(provider, {
+        provider,
+        quotes: 0,
+        surgical: 0,
+        orthotics: 0,
+        estDue: 0,
+        recDep: 0
+      });
+    }
+
+    const item = map.get(provider);
+    item.quotes += 1;
+    if (type === "orthotics") item.orthotics += 1;
+    else item.surgical += 1;
+    item.estDue += estDue;
+    item.recDep += recDep;
+  });
+
+  const rows = Array.from(map.values()).sort((a, b) => b.recDep - a.recDep);
   const host = $("providerSummaryTbody");
-  const rows = Array.isArray(state.report?.byProvider) ? state.report.byProvider : [];
 
   if (!rows.length) {
     host.innerHTML = `<tr><td colspan="6">No data yet.</td></tr>`;
@@ -153,19 +208,17 @@ function renderProviderSummary() {
 
   host.innerHTML = rows.map(r => `
     <tr>
-      <td>${escapeHtml(r.provider || "")}</td>
-      <td class="num">${parseNum(r.quotes || 0)}</td>
-      <td class="num">${parseNum(r.surgical || 0)}</td>
-      <td class="num">${parseNum(r.orthotics || 0)}</td>
-      <td class="num">${money(parseNum(r.due || 0))}</td>
-      <td class="num">${money(parseNum(r.deposits || 0))}</td>
+      <td>${escapeHtml(r.provider)}</td>
+      <td class="num">${r.quotes}</td>
+      <td class="num">${r.surgical}</td>
+      <td class="num">${r.orthotics}</td>
+      <td class="num">${money(r.estDue)}</td>
+      <td class="num">${money(r.recDep)}</td>
     </tr>
   `).join("");
 }
 
-function renderCodeSummary() {
-  const host = $("cptSummaryTbody");
-  const items = state.filteredItems || [];
+function renderCodeSummary(items) {
   const map = new Map();
 
   items.forEach(q => {
@@ -196,6 +249,7 @@ function renderCodeSummary() {
   });
 
   const rows = Array.from(map.values()).sort((a, b) => b.qty - a.qty);
+  const host = $("cptSummaryTbody");
 
   if (!rows.length) {
     host.innerHTML = `<tr><td colspan="7">No data yet.</td></tr>`;
@@ -215,18 +269,8 @@ function renderCodeSummary() {
   `).join("");
 }
 
-function quoteTypeLabel(q) {
-  return q.estimateType === "orthotics" ? "Orthotics" : "Surgical / Procedure";
-}
-
-function quoteBasisLabel(q) {
-  if (q.estimateType !== "orthotics") return "";
-  return q.orthoticBasis === "selfPay" ? "Self-Pay" : "Insurance";
-}
-
-function renderDetail() {
+function renderDetail(items) {
   const host = $("detailTbody");
-  const items = state.filteredItems || [];
 
   if (!items.length) {
     host.innerHTML = `<tr><td colspan="11">No data yet.</td></tr>`;
@@ -234,12 +278,11 @@ function renderDetail() {
   }
 
   host.innerHTML = items.map(q => {
+    const dt = q.savedAt ? new Date(q.savedAt).toLocaleString() : "";
     const codes = (q.rows || [])
       .map(r => [r.cpt, r.modifier].filter(Boolean).join("-"))
       .filter(Boolean)
       .join(", ");
-
-    const dt = q.savedAt ? new Date(q.savedAt).toLocaleString() : "";
 
     return `
       <tr>
@@ -260,10 +303,11 @@ function renderDetail() {
 }
 
 function renderAll() {
-  renderSummary();
-  renderProviderSummary();
-  renderCodeSummary();
-  renderDetail();
+  const filtered = applyFilters(state.items);
+  renderSummary(filtered);
+  renderProviderSummary(filtered);
+  renderCodeSummary(filtered);
+  renderDetail(filtered);
 }
 
 function csvCell(v) {
@@ -285,7 +329,7 @@ function download(filename, content, mime) {
 }
 
 function exportCsv() {
-  const items = state.filteredItems || [];
+  const items = applyFilters(state.items);
   if (!items.length) {
     alert("No data to export.");
     return;
@@ -370,7 +414,7 @@ function exportCsv() {
 
 function wire() {
   $("btnAdminRefresh")?.addEventListener("click", async () => {
-    await loadReport();
+    await loadItems();
     renderAll();
   });
 
@@ -379,14 +423,12 @@ function wire() {
   $("btnAdminToday")?.addEventListener("click", async () => {
     $("filterFrom").value = todayYmd();
     $("filterTo").value = todayYmd();
-    await loadReport();
     renderAll();
   });
 
   $("btnAdminThisWeek")?.addEventListener("click", async () => {
     $("filterFrom").value = startOfWeekYmd();
     $("filterTo").value = todayYmd();
-    await loadReport();
     renderAll();
   });
 
@@ -402,22 +444,15 @@ function wire() {
     "filterPatient",
     "filterTake"
   ].forEach(id => {
-    $(id)?.addEventListener("change", async () => {
-      await loadReport();
-      renderAll();
-    });
-
-    $(id)?.addEventListener("input", async () => {
-      await loadReport();
-      renderAll();
-    });
+    $(id)?.addEventListener("input", renderAll);
+    $(id)?.addEventListener("change", renderAll);
   });
 }
 
 async function init() {
   $("filterTake").value = "5000";
   await loadProviders();
-  await loadReport();
+  await loadItems();
   wire();
   renderAll();
 }
