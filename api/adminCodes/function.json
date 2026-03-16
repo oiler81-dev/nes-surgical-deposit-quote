@@ -5,8 +5,7 @@
       "type": "httpTrigger",
       "direction": "in",
       "name": "req",
-      "methods": ["get", "post", "put", "delete"],
-      "route": "adminCodes"
+      "methods": ["get", "post", "put", "delete"]
     },
     {
       "type": "http",
