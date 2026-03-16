@@ -42,11 +42,18 @@ module.exports = async function (context, req) {
     const table = getTableClient("FeeSchedule");
     const method = String(req.method || "GET").toUpperCase();
 
+    await table.ensureTable();
+
     if (method === "GET") {
       const items = [];
 
-      for await (const entity of table.listEntities()) {
-        if (entity.partitionKey !== "CPT") continue;
+      const entities = table.listEntities({
+        queryOptions: {
+          filter: "PartitionKey eq 'CPT'"
+        }
+      });
+
+      for await (const entity of entities) {
         items.push(mapEntity(entity));
       }
 
@@ -117,9 +124,10 @@ module.exports = async function (context, req) {
       }
 
       await table.upsertEntity({
-        ...existing,
         partitionKey: "CPT",
         rowKey: cpt,
+        description: existing.description || "",
+        allowed: Number(existing.allowed || 0),
         active: false,
         updatedBy: user.userDetails || "",
         updatedAt: new Date().toISOString()
@@ -134,7 +142,8 @@ module.exports = async function (context, req) {
       context,
       {
         ok: false,
-        error: err?.message || "Unexpected server error."
+        error: err?.message || "Unexpected server error.",
+        stack: String(err?.stack || "").split("\n").slice(0, 6)
       },
       500
     );
