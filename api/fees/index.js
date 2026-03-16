@@ -1,121 +1,142 @@
-// api/fees/index.js
-const fs = require("fs");
-const path = require("path");
+const { getTableClient, getUserFromSwa, jsonResponse } = require("../shared/table");
 
-function parseCsvLine(line) {
-  // Basic CSV parser that supports quoted fields with commas.
-  // Example: 12345,"Some desc, with comma",150
-  const out = [];
-  let cur = "";
-  let inQuotes = false;
+function cleanCode(v) {
+  return String(v || "").trim().toUpperCase();
+}
 
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
+function cleanText(v) {
+  return String(v || "").trim();
+}
 
-    if (ch === '"' ) {
-      // Handle escaped quotes ""
-      if (inQuotes && line[i + 1] === '"') {
-        cur += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
+function cleanMoney(v) {
+  const n = Number(String(v ?? "").replace(/,/g, "").trim());
+  return Number.isFinite(n) ? n : 0;
+}
 
-    if (ch === "," && !inQuotes) {
-      out.push(cur);
-      cur = "";
-      continue;
-    }
+function cleanBool(v, fallback = true) {
+  if (typeof v === "boolean") return v;
+  const s = String(v ?? "").trim().toLowerCase();
+  if (["true", "1", "yes", "y"].includes(s)) return true;
+  if (["false", "0", "no", "n"].includes(s)) return false;
+  return fallback;
+}
 
-    cur += ch;
-  }
+function isAdmin(user) {
+  return !!(user && Array.isArray(user.roles) && user.roles.includes("admin"));
+}
 
-  out.push(cur);
-  return out.map(s => String(s ?? "").trim());
+function mapEntity(e) {
+  return {
+    cpt: e.RowKey,
+    description: e.description || "",
+    allowed: Number(e.allowed || 0),
+    active: e.active !== false,
+    updatedBy: e.updatedBy || "",
+    updatedAt: e.updatedAt || ""
+  };
 }
 
 module.exports = async function (context, req) {
   try {
-    // If you renamed it, change this to "feeSchedule.csv"
-    const filename = "feeSchedule.sample.csv"; // or "feeSchedule.csv"
+    const user = getUserFromSwa(req);
+    const table = getTableClient("FeeSchedule");
+    const method = String(req.method || "GET").toUpperCase();
 
-    // __dirname = /api/fees
-    // go up two levels to repo root: /api/fees -> /api -> /
-    const filePath = path.join(__dirname, "..", "..", filename);
+    if (method === "GET") {
+      const items = [];
+      for await (const entity of table.listEntities()) {
+        if (entity.PartitionKey !== "CPT") continue;
+        items.push(mapEntity(entity));
+      }
 
-    if (!fs.existsSync(filePath)) {
-      context.res = {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-        body: {
-          error: "Fee schedule CSV not found",
-          expectedPath: filePath,
-          fix: `Place ${filename} at repo root (same level as /api).`
+      items.sort((a, b) => String(a.cpt || "").localeCompare(String(b.cpt || "")));
+
+      return jsonResponse(context, {
+        ok: true,
+        items,
+        user: {
+          authenticated: user.authenticated,
+          userDetails: user.userDetails,
+          roles: user.roles || []
         }
-      };
-      return;
+      });
     }
 
-    const csv = fs.readFileSync(filePath, "utf8");
-
-    // Normalize line endings and split
-    const lines = csv.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-    if (lines.length < 2) {
-      context.res = {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-        body: { error: "Fee schedule CSV is empty or missing data rows." }
-      };
-      return;
+    if (!user.authenticated) {
+      return jsonResponse(context, { ok: false, error: "Not signed in." }, 401);
     }
 
-    // Expect header: CPT,Description,AllowedAmount
-    const header = parseCsvLine(lines[0]).map(h => h.toLowerCase());
-    const cptIdx = header.indexOf("cpt");
-    const descIdx = header.indexOf("description");
-    const amtIdx = header.indexOf("allowedamount");
-
-    if (cptIdx === -1 || descIdx === -1 || amtIdx === -1) {
-      context.res = {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-        body: {
-          error: "CSV header mismatch",
-          expected: ["CPT", "Description", "AllowedAmount"],
-          got: lines[0]
-        }
-      };
-      return;
+    if (!isAdmin(user)) {
+      return jsonResponse(context, { ok: false, error: "Admin role required." }, 403);
     }
 
-    const fees = [];
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
+    const body = req.body || {};
 
-      const cols = parseCsvLine(line);
-      const cpt = (cols[cptIdx] || "").trim();
-      const desc = (cols[descIdx] || "").trim();
-      const fee = parseFloat((cols[amtIdx] || "").trim());
+    if (method === "POST" || method === "PUT") {
+      const cpt = cleanCode(body.cpt);
+      const description = cleanText(body.description);
+      const allowed = cleanMoney(body.allowed);
+      const active = cleanBool(body.active, true);
 
-      if (!cpt || !Number.isFinite(fee)) continue;
+      if (!cpt) {
+        return jsonResponse(context, { ok: false, error: "CPT is required." }, 400);
+      }
 
-      fees.push({ cpt, desc, fee });
+      const now = new Date().toISOString();
+
+      await table.upsertEntity({
+        PartitionKey: "CPT",
+        RowKey: cpt,
+        cpt,
+        description,
+        allowed,
+        active,
+        updatedBy: user.userDetails || "",
+        updatedAt: now
+      });
+
+      return jsonResponse(context, { ok: true });
     }
 
-    context.res = {
-      status: 200,
-      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-      body: fees
-    };
+    if (method === "DELETE") {
+      const cpt = cleanCode((req.query && req.query.cpt) || body.cpt);
+
+      if (!cpt) {
+        return jsonResponse(context, { ok: false, error: "CPT is required." }, 400);
+      }
+
+      let existing;
+      try {
+        existing = await table.getEntity("CPT", cpt);
+      } catch {
+        existing = null;
+      }
+
+      if (!existing) {
+        return jsonResponse(context, { ok: false, error: "Code not found." }, 404);
+      }
+
+      await table.upsertEntity({
+        ...existing,
+        PartitionKey: "CPT",
+        RowKey: cpt,
+        active: false,
+        updatedBy: user.userDetails || "",
+        updatedAt: new Date().toISOString()
+      });
+
+      return jsonResponse(context, { ok: true });
+    }
+
+    return jsonResponse(context, { ok: false, error: "Method not allowed." }, 405);
   } catch (err) {
-    context.log("fees error:", err);
-    context.res = {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-      body: { error: "Could not load fee schedule", details: String(err?.message || err) }
-    };
+    return jsonResponse(
+      context,
+      {
+        ok: false,
+        error: err?.message || "Unexpected server error."
+      },
+      500
+    );
   }
 };
