@@ -1,73 +1,142 @@
-const { TableClient } = require("@azure/data-tables");
+const { getTableClient, getUserFromSwa, jsonResponse } = require("../shared/table");
 
-function getClient(tableName) {
-  const connectionString =
-    process.env.AZURE_STORAGE_CONNECTION_STRING ||
-    process.env.AzureWebJobsStorage;
-
-  if (!connectionString) {
-    throw new Error("Missing storage connection string.");
-  }
-
-  return TableClient.fromConnectionString(connectionString, tableName);
+function cleanCode(v) {
+  return String(v || "").trim().toUpperCase();
 }
 
-function getTableClient(tableName) {
-  const client = getClient(tableName);
+function cleanText(v) {
+  return String(v || "").trim();
+}
 
+function cleanMoney(v) {
+  const n = Number(String(v ?? "").replace(/,/g, "").trim());
+  return Number.isFinite(n) ? n : 0;
+}
+
+function cleanBool(v, fallback = true) {
+  if (typeof v === "boolean") return v;
+  const s = String(v ?? "").trim().toLowerCase();
+  if (["true", "1", "yes", "y"].includes(s)) return true;
+  if (["false", "0", "no", "n"].includes(s)) return false;
+  return fallback;
+}
+
+function isAdmin(user) {
+  return !!(user && Array.isArray(user.roles) && user.roles.includes("admin"));
+}
+
+function mapEntity(entity) {
   return {
-    async upsertEntity(entity) {
-      await client.createTable().catch(() => {});
-      return client.upsertEntity(entity, "Merge");
-    },
+    cpt: entity.rowKey || "",
+    description: entity.description || "",
+    allowed: Number(entity.allowed || 0),
+    active: entity.active !== false,
+    updatedBy: entity.updatedBy || "",
+    updatedAt: entity.updatedAt || ""
+  };
+}
 
-    async getEntity(partitionKey, rowKey) {
-      return client.getEntity(partitionKey, rowKey);
-    },
+module.exports = async function (context, req) {
+  try {
+    const user = getUserFromSwa(req);
+    const table = getTableClient("FeeSchedule");
+    const method = String(req.method || "GET").toUpperCase();
 
-    async *listEntities() {
-      await client.createTable().catch(() => {});
-      for await (const entity of client.listEntities()) {
-        yield entity;
+    if (method === "GET") {
+      const items = [];
+
+      for await (const entity of table.listEntities()) {
+        if (entity.partitionKey !== "CPT") continue;
+        items.push(mapEntity(entity));
       }
+
+      items.sort((a, b) => String(a.cpt || "").localeCompare(String(b.cpt || "")));
+
+      return jsonResponse(context, {
+        ok: true,
+        items,
+        user: {
+          authenticated: user.authenticated,
+          userDetails: user.userDetails,
+          roles: user.roles || []
+        }
+      });
     }
-  };
-}
 
-function getUserFromSwa(req) {
-  const principal = req.headers["x-ms-client-principal"];
+    if (!user.authenticated) {
+      return jsonResponse(context, { ok: false, error: "Not signed in." }, 401);
+    }
 
-  if (!principal) {
-    return {
-      authenticated: false,
-      userDetails: null,
-      roles: ["anonymous"]
-    };
+    if (!isAdmin(user)) {
+      return jsonResponse(context, { ok: false, error: "Admin role required." }, 403);
+    }
+
+    const body = req.body || {};
+
+    if (method === "POST" || method === "PUT") {
+      const cpt = cleanCode(body.cpt);
+      const description = cleanText(body.description);
+      const allowed = cleanMoney(body.allowed);
+      const active = cleanBool(body.active, true);
+
+      if (!cpt) {
+        return jsonResponse(context, { ok: false, error: "CPT is required." }, 400);
+      }
+
+      const now = new Date().toISOString();
+
+      await table.upsertEntity({
+        partitionKey: "CPT",
+        rowKey: cpt,
+        description,
+        allowed,
+        active,
+        updatedBy: user.userDetails || "",
+        updatedAt: now
+      });
+
+      return jsonResponse(context, { ok: true });
+    }
+
+    if (method === "DELETE") {
+      const cpt = cleanCode((req.query && req.query.cpt) || body.cpt);
+
+      if (!cpt) {
+        return jsonResponse(context, { ok: false, error: "CPT is required." }, 400);
+      }
+
+      let existing;
+      try {
+        existing = await table.getEntity("CPT", cpt);
+      } catch {
+        existing = null;
+      }
+
+      if (!existing) {
+        return jsonResponse(context, { ok: false, error: "Code not found." }, 404);
+      }
+
+      await table.upsertEntity({
+        ...existing,
+        partitionKey: "CPT",
+        rowKey: cpt,
+        active: false,
+        updatedBy: user.userDetails || "",
+        updatedAt: new Date().toISOString()
+      });
+
+      return jsonResponse(context, { ok: true });
+    }
+
+    return jsonResponse(context, { ok: false, error: "Method not allowed." }, 405);
+  } catch (err) {
+    return jsonResponse(
+      context,
+      {
+        ok: false,
+        error: err?.message || "Unexpected server error."
+      },
+      500
+    );
   }
-
-  const decoded = JSON.parse(
-    Buffer.from(principal, "base64").toString("utf8")
-  );
-
-  return {
-    authenticated: true,
-    userDetails: decoded.userDetails,
-    roles: decoded.userRoles || []
-  };
-}
-
-function jsonResponse(context, body, status = 200) {
-  context.res = {
-    status,
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body
-  };
-}
-
-module.exports = {
-  getTableClient,
-  getUserFromSwa,
-  jsonResponse
 };
