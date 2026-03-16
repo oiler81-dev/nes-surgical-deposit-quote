@@ -80,7 +80,7 @@ function updateIdentityUi() {
 async function loadCodes() {
   $("codesBody").innerHTML = `<tr><td colspan="7" class="empty">Loading...</td></tr>`;
 
-  const res = await fetch("/api/adminCodes", { cache: "no-store" });
+  const res = await fetch("/api/fees", { cache: "no-store" });
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok || !data.ok) {
@@ -175,7 +175,7 @@ window.deactivateCode = async function(cpt) {
   hideError();
 
   try {
-    const res = await fetch(`/api/adminCodes?cpt=${encodeURIComponent(cpt)}`, {
+    const res = await fetch(`/api/fees?cpt=${encodeURIComponent(cpt)}`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" }
     });
@@ -215,7 +215,7 @@ async function saveCode() {
   const method = state.editingCpt ? "PUT" : "POST";
 
   try {
-    const res = await fetch("/api/adminCodes", {
+    const res = await fetch("/api/fees", {
       method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
