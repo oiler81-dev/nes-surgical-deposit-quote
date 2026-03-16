@@ -6,59 +6,78 @@ function getTableClient(tableName) {
     process.env.AzureWebJobsStorage;
 
   if (!connectionString) {
-    throw new Error("Missing AZURE_STORAGE_CONNECTION_STRING or AzureWebJobsStorage.");
+    throw new Error(
+      "Missing AZURE_STORAGE_CONNECTION_STRING or AzureWebJobsStorage."
+    );
   }
 
   const client = TableClient.fromConnectionString(connectionString, tableName);
 
-  async function ensureTable() {
-    try {
-      await client.createTable();
-    } catch (err) {
-      const code = err?.statusCode || err?.code;
-      if (code !== 409 && code !== "TableAlreadyExists") {
-        throw err;
-      }
-    }
-  }
-
   return {
-    raw: client,
-
-    async upsertEntity(entity, mode = "Merge") {
-      await ensureTable();
-      return client.upsertEntity(entity, mode);
-    },
-
-    async getEntity(partitionKey, rowKey) {
-      await ensureTable();
-      try {
-        return await client.getEntity(partitionKey, rowKey);
-      } catch (err) {
-        const code = err?.statusCode || err?.code;
-        if (code === 404 || code === "ResourceNotFound") return null;
-        throw err;
-      }
+    async upsertEntity(entity) {
+      await client.createTable().catch(() => {});
+      return client.upsertEntity(entity, "Merge");
     },
 
     async deleteEntity(partitionKey, rowKey) {
-      await ensureTable();
-      try {
-        return await client.deleteEntity(partitionKey, rowKey);
-      } catch (err) {
-        const code = err?.statusCode || err?.code;
-        if (code === 404 || code === "ResourceNotFound") return null;
-        throw err;
-      }
+      await client.createTable().catch(() => {});
+      return client.deleteEntity(partitionKey, rowKey);
     },
 
-    async *listEntities(queryOptions = {}) {
-      await ensureTable();
-      for await (const entity of client.listEntities(queryOptions)) {
+    async getEntity(partitionKey, rowKey) {
+      await client.createTable().catch(() => {});
+      return client.getEntity(partitionKey, rowKey);
+    },
+
+    async *listEntities() {
+      await client.createTable().catch(() => {});
+      for await (const entity of client.listEntities()) {
         yield entity;
       }
     }
   };
 }
 
-module.exports = { getTableClient };
+function getUserFromSwa(req) {
+  const principal = req.headers["x-ms-client-principal"];
+
+  if (!principal) {
+    return {
+      authenticated: false,
+      userDetails: null,
+      userId: null,
+      roles: ["anonymous"]
+    };
+  }
+
+  const decoded = JSON.parse(
+    Buffer.from(principal, "base64").toString("utf8")
+  );
+
+  const roles = Array.isArray(decoded.userRoles)
+    ? decoded.userRoles
+    : ["authenticated"];
+
+  return {
+    authenticated: true,
+    userDetails: decoded.userDetails,
+    userId: decoded.userId,
+    roles
+  };
+}
+
+function jsonResponse(context, body, status = 200) {
+  context.res = {
+    status,
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body
+  };
+}
+
+module.exports = {
+  getTableClient,
+  getUserFromSwa,
+  jsonResponse
+};
