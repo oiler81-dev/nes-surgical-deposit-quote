@@ -2,6 +2,7 @@
    CONFIG
    ========================= */
 const ORTHOTIC_BILLED_EACH = 680;
+const ORTHOTIC_SELF_PAY_PAIR = 480;
 
 const ORTHOTIC_ALLOWABLES = {
   "BCBS - REGENCE BCBS": 406.35,
@@ -216,6 +217,35 @@ function parseFeeCsv(text) {
   return out;
 }
 
+
+function setFeeMapFromList(items) {
+  state.feeMap.clear();
+
+  for (const item of Array.isArray(items) ? items : []) {
+    const cpt = String(item?.cpt || "").trim();
+    if (!cpt) continue;
+
+    const active = item?.active !== false && item?.isActive !== false;
+    if (!active) continue;
+
+    state.feeMap.set(cpt, {
+      desc: String(item?.description || item?.desc || "").trim(),
+      fee: parseNum(item?.allowed ?? item?.fee)
+    });
+  }
+
+  renderFeePreview();
+  populateCptDatalist();
+}
+
+async function loadFeesFromApi() {
+  const data = await apiGet("/api/adminCodes?activeOnly=true");
+  if (!data || !Array.isArray(data.items) || !data.items.length) return false;
+
+  setFeeMapFromList(data.items);
+  return true;
+}
+
 async function loadFeesFromRootCsv() {
   const candidatePaths = [
     "/feeSchedule.sample.csv",
@@ -235,16 +265,12 @@ async function loadFeesFromRootCsv() {
       const parsed = parseFeeCsv(text);
       if (!parsed.length) continue;
 
-      state.feeMap.clear();
-      parsed.forEach(x => {
-        state.feeMap.set(String(x.cpt).trim(), {
-          desc: String(x.desc || "").trim(),
-          fee: parseNum(x.fee)
-        });
-      });
-
-      renderFeePreview();
-      populateCptDatalist();
+      setFeeMapFromList(parsed.map(x => ({
+        cpt: x.cpt,
+        description: x.desc,
+        allowed: x.fee,
+        active: true
+      })));
       return true;
     } catch {}
   }
@@ -443,7 +469,9 @@ function getOrthoticsRows() {
   const basis = getOrthoticBasis();
 
   if (basis === "selfPay") {
-    const each = Math.max(0, parseNum($("orthoticSelfPayEach")?.value));
+    const pairTotal = Math.max(0, parseNum($("orthoticSelfPayEach")?.value || ORTHOTIC_SELF_PAY_PAIR));
+    const perSide = pairTotal / 2;
+
     return [
       {
         cpt: "L3000",
@@ -451,10 +479,10 @@ function getOrthoticsRows() {
         desc: "Orthotics - Right",
         qty: 1,
         billed: ORTHOTIC_BILLED_EACH,
-        allowed: each,
+        allowed: perSide,
         adjPct: 1,
-        adjAllowed: each,
-        lineTotal: each
+        adjAllowed: perSide,
+        lineTotal: perSide
       },
       {
         cpt: "L3000",
@@ -462,10 +490,10 @@ function getOrthoticsRows() {
         desc: "Orthotics - Left",
         qty: 1,
         billed: ORTHOTIC_BILLED_EACH,
-        allowed: each,
+        allowed: perSide,
         adjPct: 1,
-        adjAllowed: each,
-        lineTotal: each
+        adjAllowed: perSide,
+        lineTotal: perSide
       }
     ];
   }
@@ -948,7 +976,7 @@ function openHistoryItem(q) {
     }
 
     if ($("orthoticSelfPayEach")) {
-      $("orthoticSelfPayEach").value = parseNum(q.orthoticSelfPayEach || ORTHOTIC_BILLED_EACH);
+      $("orthoticSelfPayEach").value = parseNum(q.orthoticSelfPayEach || ORTHOTIC_SELF_PAY_PAIR);
     }
 
     renderOrthoticsPreview();
@@ -1149,7 +1177,7 @@ function clearQuote() {
   if ($("orthoticBasis")) $("orthoticBasis").value = "insurance";
   if ($("orthoticPayer")) $("orthoticPayer").value = "";
   if ($("orthoticAllowableEach")) $("orthoticAllowableEach").value = "0";
-  if ($("orthoticSelfPayEach")) $("orthoticSelfPayEach").value = String(ORTHOTIC_BILLED_EACH);
+  if ($("orthoticSelfPayEach")) $("orthoticSelfPayEach").value = String(ORTHOTIC_SELF_PAY_PAIR);
 
   state.rows = [];
   ensureRows(3);
@@ -1298,9 +1326,11 @@ async function init() {
   await loadProviders();
   populateOrthoticPayers();
 
-  const feesOk = await loadFeesFromRootCsv();
+  let feesOk = await loadFeesFromApi();
+  if (!feesOk) feesOk = await loadFeesFromRootCsv();
+
   if (!feesOk) {
-    alert("Could not load the fee schedule from the site root. You can still upload the fee CSV manually.");
+    alert("Could not load codes from the Admin Code Manager or the site root CSV. You can still upload the fee CSV manually.");
   }
 
   state.rows = [];
