@@ -23,7 +23,7 @@ function hideError() {
 function showSuccess(message) {
   $("successText").textContent = message || "";
   $("successBox").classList.remove("hidden");
-  setTimeout(() => $("successBox").classList.add("hidden"), 2500);
+  setTimeout(() => $("successBox").classList.add("hidden"), 3000);
 }
 
 function money(n) {
@@ -66,9 +66,11 @@ function updateIdentityUi() {
 
   if (state.isAdmin) {
     $("editorCard").classList.remove("hidden");
+    $("importCard").classList.remove("hidden");
     $("deniedBox").classList.add("hidden");
   } else {
     $("editorCard").classList.add("hidden");
+    $("importCard").classList.add("hidden");
     if (state.user?.authenticated) {
       $("deniedBox").classList.remove("hidden");
     } else {
@@ -205,13 +207,7 @@ async function saveCode() {
     return;
   }
 
-  const payload = {
-    cpt,
-    description,
-    allowed,
-    active
-  };
-
+  const payload = { cpt, description, allowed, active };
   const method = state.editingCpt ? "PUT" : "POST";
 
   try {
@@ -231,6 +227,42 @@ async function saveCode() {
     await loadCodes();
   } catch (err) {
     showError(err.message || "Could not save code.");
+  }
+}
+
+async function bulkImportCsv() {
+  hideError();
+
+  const file = $("bulkFile").files?.[0];
+  if (!file) {
+    showError("Choose a CSV file first.");
+    return;
+  }
+
+  try {
+    const csvText = await file.text();
+
+    const res = await fetch("/api/fees", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "bulkImportCsv",
+        csvText,
+        replaceExisting: true
+      })
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.ok) {
+      throw new Error(data?.error || `Could not import CSV. (${res.status})`);
+    }
+
+    showSuccess(`Imported ${data.imported} CPT codes.`);
+    $("bulkFile").value = "";
+    await loadCodes();
+  } catch (err) {
+    showError(err.message || "Could not import CSV.");
   }
 }
 
@@ -296,6 +328,8 @@ window.addEventListener("DOMContentLoaded", () => {
   $("rowLimit").addEventListener("input", applyFilters);
   $("saveBtn").addEventListener("click", saveCode);
   $("clearBtn").addEventListener("click", resetForm);
+  $("bulkImportBtn").addEventListener("click", bulkImportCsv);
+  $("bulkClearBtn").addEventListener("click", () => { $("bulkFile").value = ""; });
 
   init();
 });
