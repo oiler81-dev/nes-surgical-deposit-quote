@@ -1,190 +1,168 @@
-const { getTableClient } = require("../shared/table");
+const { getTableClient, getUserFromSwa, jsonResponse } = require("../shared/table");
 
-const TABLE_NAME = "FeeSchedule";
-const PARTITION_KEY = "CPT";
-
-function json(context, status, body) {
-  context.res = {
-    status,
-    headers: { "Content-Type": "application/json" },
-    body
-  };
+function cleanCode(v) {
+  return String(v || "").trim().toUpperCase();
 }
 
-function parsePrincipal(req) {
-  const raw = req.headers["x-ms-client-principal"];
-  if (!raw) return null;
-
-  try {
-    const decoded = JSON.parse(Buffer.from(raw, "base64").toString("utf8"));
-    return decoded || null;
-  } catch {
-    return null;
-  }
+function cleanText(v) {
+  return String(v || "").trim();
 }
 
-function getRoles(principal) {
-  return Array.isArray(principal?.userRoles) ? principal.userRoles : [];
-}
-
-function isAdmin(principal) {
-  return getRoles(principal).some(r => String(r).toLowerCase() === "admin");
-}
-
-function normalizeCpt(value) {
-  return String(value || "").trim().toUpperCase();
-}
-
-function toBool(value, defaultValue = true) {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string") {
-    const v = value.trim().toLowerCase();
-    if (["true", "1", "yes", "y"].includes(v)) return true;
-    if (["false", "0", "no", "n"].includes(v)) return false;
-  }
-  return defaultValue;
-}
-
-function parseAllowed(value) {
-  const n = parseFloat(String(value ?? "").replace(/,/g, ""));
+function cleanMoney(v) {
+  const n = Number(String(v ?? "").replace(/,/g, "").trim());
   return Number.isFinite(n) ? n : 0;
 }
 
-function mapEntity(entity) {
+function cleanBool(v, fallback = true) {
+  if (typeof v === "boolean") return v;
+  const s = String(v ?? "").trim().toLowerCase();
+  if (["true", "1", "yes", "y"].includes(s)) return true;
+  if (["false", "0", "no", "n"].includes(s)) return false;
+  return fallback;
+}
+
+function isAdmin(user) {
+  return !!(user && Array.isArray(user.roles) && user.roles.includes("admin"));
+}
+
+function mapEntity(e) {
   return {
-    cpt: entity.RowKey,
-    description: entity.description || "",
-    allowed: Number(entity.allowed || 0),
-    active: entity.active !== false,
-    updatedBy: entity.updatedBy || "",
-    updatedAt: entity.updatedAt || "",
-    createdBy: entity.createdBy || "",
-    createdAt: entity.createdAt || ""
+    cpt: e.RowKey,
+    description: e.description || "",
+    allowed: Number(e.allowed || 0),
+    active: e.active !== false,
+    updatedBy: e.updatedBy || "",
+    updatedAt: e.updatedAt || ""
   };
 }
 
 module.exports = async function (context, req) {
-  const principal = parsePrincipal(req);
-  const method = String(req.method || "GET").toUpperCase();
-  const table = getTableClient(TABLE_NAME);
-
   try {
-    if (method === "GET") {
-      const activeOnly = toBool(req.query.activeOnly, false);
-      const items = [];
+    const user = getUserFromSwa(req);
+    const table = getTableClient("FeeSchedule");
+    const method = String(req.method || "GET").toUpperCase();
 
-      for await (const entity of table.listEntities({
-        queryOptions: { filter: `PartitionKey eq '${PARTITION_KEY}'` }
-      })) {
-        const item = mapEntity(entity);
-        if (activeOnly && !item.active) continue;
-        items.push(item);
+    if (method === "GET") {
+      const items = [];
+      for await (const entity of table.listEntities()) {
+        if (entity.PartitionKey !== "CPT") continue;
+        items.push(mapEntity(entity));
       }
 
       items.sort((a, b) => a.cpt.localeCompare(b.cpt));
-      return json(context, 200, { ok: true, items });
+
+      return jsonResponse(context, {
+        ok: true,
+        items,
+        user: {
+          authenticated: user.authenticated,
+          userDetails: user.userDetails,
+          roles: user.roles || []
+        }
+      });
     }
 
-    if (!principal) {
-      return json(context, 401, { ok: false, error: "Authentication required." });
+    if (!user.authenticated) {
+      return jsonResponse(context, { ok: false, error: "Not signed in." }, 401);
     }
 
-    if (!isAdmin(principal)) {
-      return json(context, 403, { ok: false, error: "Admin role required." });
+    if (!isAdmin(user)) {
+      return jsonResponse(context, { ok: false, error: "Admin role required." }, 403);
     }
 
     const body = req.body || {};
-    const now = new Date().toISOString();
-    const user = principal.userDetails || principal.userId || "admin";
 
     if (method === "POST") {
-      const cpt = normalizeCpt(body.cpt);
-      const description = String(body.description || "").trim();
-      const allowed = parseAllowed(body.allowed);
-      const active = toBool(body.active, true);
+      const cpt = cleanCode(body.cpt);
+      const description = cleanText(body.description);
+      const allowed = cleanMoney(body.allowed);
+      const active = cleanBool(body.active, true);
 
-      if (!cpt) return json(context, 400, { ok: false, error: "CPT is required." });
-
-      const existing = await table.getEntity(PARTITION_KEY, cpt);
-      if (existing) {
-        return json(context, 409, { ok: false, error: "That CPT already exists." });
+      if (!cpt) {
+        return jsonResponse(context, { ok: false, error: "CPT is required." }, 400);
       }
 
-      const entity = {
-        partitionKey: PARTITION_KEY,
-        rowKey: cpt,
+      const now = new Date().toISOString();
+
+      await table.upsertEntity({
+        PartitionKey: "CPT",
+        RowKey: cpt,
+        cpt,
         description,
         allowed,
         active,
-        createdBy: user,
-        createdAt: now,
-        updatedBy: user,
+        updatedBy: user.userDetails || "",
         updatedAt: now
-      };
+      });
 
-      await table.upsertEntity(entity, "Replace");
-      return json(context, 200, { ok: true, item: mapEntity({ PartitionKey: PARTITION_KEY, RowKey: cpt, ...entity }) });
+      return jsonResponse(context, { ok: true });
     }
 
     if (method === "PUT") {
-      const cpt = normalizeCpt(body.cpt);
-      if (!cpt) return json(context, 400, { ok: false, error: "CPT is required." });
+      const cpt = cleanCode(body.cpt);
+      const description = cleanText(body.description);
+      const allowed = cleanMoney(body.allowed);
+      const active = cleanBool(body.active, true);
 
-      const existing = await table.getEntity(PARTITION_KEY, cpt);
-      if (!existing) {
-        return json(context, 404, { ok: false, error: "CPT not found." });
+      if (!cpt) {
+        return jsonResponse(context, { ok: false, error: "CPT is required." }, 400);
       }
 
-      const entity = {
-        partitionKey: PARTITION_KEY,
-        rowKey: cpt,
-        description: typeof body.description === "undefined" ? (existing.description || "") : String(body.description || "").trim(),
-        allowed: typeof body.allowed === "undefined" ? Number(existing.allowed || 0) : parseAllowed(body.allowed),
-        active: typeof body.active === "undefined" ? (existing.active !== false) : toBool(body.active, true),
-        createdBy: existing.createdBy || user,
-        createdAt: existing.createdAt || now,
-        updatedBy: user,
-        updatedAt: now
-      };
+      const now = new Date().toISOString();
 
-      await table.upsertEntity(entity, "Replace");
-      return json(context, 200, { ok: true, item: mapEntity({ PartitionKey: PARTITION_KEY, RowKey: cpt, ...entity }) });
+      await table.upsertEntity({
+        PartitionKey: "CPT",
+        RowKey: cpt,
+        cpt,
+        description,
+        allowed,
+        active,
+        updatedBy: user.userDetails || "",
+        updatedAt: now
+      });
+
+      return jsonResponse(context, { ok: true });
     }
 
     if (method === "DELETE") {
-      const cpt = normalizeCpt(req.query.cpt || body.cpt);
-      const hardDelete = toBool(req.query.hardDelete || body.hardDelete, false);
+      const cpt = cleanCode(req.query?.cpt || body.cpt);
 
-      if (!cpt) return json(context, 400, { ok: false, error: "CPT is required." });
+      if (!cpt) {
+        return jsonResponse(context, { ok: false, error: "CPT is required." }, 400);
+      }
 
-      const existing = await table.getEntity(PARTITION_KEY, cpt);
+      let existing;
+      try {
+        existing = await table.getEntity("CPT", cpt);
+      } catch {
+        existing = null;
+      }
+
       if (!existing) {
-        return json(context, 404, { ok: false, error: "CPT not found." });
+        return jsonResponse(context, { ok: false, error: "Code not found." }, 404);
       }
 
-      if (hardDelete) {
-        await table.deleteEntity(PARTITION_KEY, cpt);
-        return json(context, 200, { ok: true, deleted: true, cpt });
-      }
-
-      const entity = {
-        partitionKey: PARTITION_KEY,
-        rowKey: cpt,
-        description: existing.description || "",
-        allowed: Number(existing.allowed || 0),
+      await table.upsertEntity({
+        ...existing,
+        PartitionKey: "CPT",
+        RowKey: cpt,
         active: false,
-        createdBy: existing.createdBy || user,
-        createdAt: existing.createdAt || now,
-        updatedBy: user,
-        updatedAt: now
-      };
+        updatedBy: user.userDetails || "",
+        updatedAt: new Date().toISOString()
+      });
 
-      await table.upsertEntity(entity, "Replace");
-      return json(context, 200, { ok: true, deleted: false, item: mapEntity({ PartitionKey: PARTITION_KEY, RowKey: cpt, ...entity }) });
+      return jsonResponse(context, { ok: true });
     }
 
-    return json(context, 405, { ok: false, error: "Method not allowed." });
+    return jsonResponse(context, { ok: false, error: "Method not allowed." }, 405);
   } catch (err) {
-    return json(context, 500, { ok: false, error: err?.message || String(err) });
+    return jsonResponse(
+      context,
+      {
+        ok: false,
+        error: err?.message || "Unexpected server error."
+      },
+      500
+    );
   }
 };
