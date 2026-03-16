@@ -20,6 +20,7 @@
 
       <div class="topbar__actions">
         <a id="adminLink" class="btn btn--ghost" href="/admin.html">Admin</a>
+        <a id="codeManagerLink" class="btn btn--ghost" href="/admin-codes.html">Codes</a>
         <a class="btn btn--ghost" href="/.auth/logout">Logout</a>
       </div>
     </div>
@@ -66,7 +67,7 @@
           <label class="label">Upload Fee Schedule CSV</label>
           <input id="feeFile" class="inputFile" type="file" accept=".csv" />
           <div class="hint">
-            Primary source is the root CSV file. Manual upload is only a fallback.
+            Primary source is the Admin Code Manager. The root CSV and manual upload are fallbacks only.
             Required columns: <b>CPT</b>, <b>Description</b> (optional), and an <b>Allowed</b> column
             (Allowed/AllowedAmount/Allowable).
           </div>
@@ -198,9 +199,9 @@
           </div>
 
           <div class="orthotic-selfpay-only hiddenBlock">
-            <label class="label">Self-Pay Amount Per L3000</label>
-            <input id="orthoticSelfPayEach" class="input" type="number" min="0" step="0.01" value="680" />
-            <div class="hint">Use the approved self-pay amount per side.</div>
+            <label class="label">Self-Pay Amount (Pair)</label>
+            <input id="orthoticSelfPayEach" class="input" type="number" min="0" step="0.01" value="480" />
+            <div class="hint">Flat self-pay amount for both orthotics together.</div>
           </div>
         </div>
 
@@ -209,7 +210,7 @@
         </div>
 
         <div class="hint orthotic-selfpay-only hiddenBlock">
-          Self-pay orthotics ignores deductible, coinsurance, and OOP max. The patient responsibility becomes the self-pay amount for both sides.
+          Self-pay orthotics ignores deductible, coinsurance, and OOP max. The patient responsibility becomes the flat pair price.
         </div>
       </div>
     </section>
