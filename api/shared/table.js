@@ -1,15 +1,19 @@
 const { TableClient } = require("@azure/data-tables");
 
-function getTableClient(tableName) {
+function getClient(tableName) {
   const connectionString =
     process.env.AZURE_STORAGE_CONNECTION_STRING ||
     process.env.AzureWebJobsStorage;
 
   if (!connectionString) {
-    throw new Error("Missing AZURE_STORAGE_CONNECTION_STRING or AzureWebJobsStorage.");
+    throw new Error("Missing storage connection string.");
   }
 
-  const client = TableClient.fromConnectionString(connectionString, tableName);
+  return TableClient.fromConnectionString(connectionString, tableName);
+}
+
+function getTableClient(tableName) {
+  const client = getClient(tableName);
 
   return {
     async upsertEntity(entity) {
@@ -17,13 +21,7 @@ function getTableClient(tableName) {
       return client.upsertEntity(entity, "Merge");
     },
 
-    async deleteEntity(partitionKey, rowKey) {
-      await client.createTable().catch(() => {});
-      return client.deleteEntity(partitionKey, rowKey);
-    },
-
     async getEntity(partitionKey, rowKey) {
-      await client.createTable().catch(() => {});
       return client.getEntity(partitionKey, rowKey);
     },
 
@@ -43,18 +41,18 @@ function getUserFromSwa(req) {
     return {
       authenticated: false,
       userDetails: null,
-      userId: null,
       roles: ["anonymous"]
     };
   }
 
-  const decoded = JSON.parse(Buffer.from(principal, "base64").toString("utf8"));
+  const decoded = JSON.parse(
+    Buffer.from(principal, "base64").toString("utf8")
+  );
 
   return {
     authenticated: true,
-    userDetails: decoded.userDetails || null,
-    userId: decoded.userId || null,
-    roles: Array.isArray(decoded.userRoles) ? decoded.userRoles : ["authenticated"]
+    userDetails: decoded.userDetails,
+    roles: decoded.userRoles || []
   };
 }
 
