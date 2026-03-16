@@ -6,9 +6,7 @@ function getTableClient(tableName) {
     process.env.AzureWebJobsStorage;
 
   if (!connectionString) {
-    throw new Error(
-      "Missing AZURE_STORAGE_CONNECTION_STRING or AzureWebJobsStorage."
-    );
+    throw new Error("Missing AZURE_STORAGE_CONNECTION_STRING or AzureWebJobsStorage.");
   }
 
   const client = TableClient.fromConnectionString(connectionString, tableName);
@@ -50,19 +48,13 @@ function getUserFromSwa(req) {
     };
   }
 
-  const decoded = JSON.parse(
-    Buffer.from(principal, "base64").toString("utf8")
-  );
-
-  const roles = Array.isArray(decoded.userRoles)
-    ? decoded.userRoles
-    : ["authenticated"];
+  const decoded = JSON.parse(Buffer.from(principal, "base64").toString("utf8"));
 
   return {
     authenticated: true,
-    userDetails: decoded.userDetails,
-    userId: decoded.userId,
-    roles
+    userDetails: decoded.userDetails || null,
+    userId: decoded.userId || null,
+    roles: Array.isArray(decoded.userRoles) ? decoded.userRoles : ["authenticated"]
   };
 }
 
