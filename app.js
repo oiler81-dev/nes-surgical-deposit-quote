@@ -24,18 +24,22 @@ const state = {
   maxRows: 10,
   history: [],
   me: null,
-  estimateType: "surgical"
+  estimateType: "surgical",
+  historyLoaded: false
 };
 
 const $ = (id) => document.getElementById(id);
 
+/* =========================
+   HELPERS
+   ========================= */
 function money(n) {
   const v = Number.isFinite(n) ? n : 0;
   return v.toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
 
 function parseNum(x) {
-  const v = parseFloat(String(x ?? "").replace(/,/g, ""));
+  const v = parseFloat(String(x ?? "").replace(/,/g, "").trim());
   return Number.isFinite(v) ? v : 0;
 }
 
@@ -66,6 +70,19 @@ function startOfWeekYmd() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function safeText(v, fallback = "") {
+  const s = String(v ?? "").trim();
+  return s || fallback;
+}
+
+function toBool(v, fallback = false) {
+  if (typeof v === "boolean") return v;
+  const s = String(v ?? "").trim().toLowerCase();
+  if (["true", "1", "yes", "y"].includes(s)) return true;
+  if (["false", "0", "no", "n"].includes(s)) return false;
+  return fallback;
+}
+
 function getEstimateType() {
   const checked = document.querySelector('input[name="estimateType"]:checked');
   return checked?.value === "orthotics" ? "orthotics" : "surgical";
@@ -75,16 +92,17 @@ function getOrthoticBasis() {
   return $("orthoticBasis")?.value === "selfPay" ? "selfPay" : "insurance";
 }
 
-function getOrthoticPayer() {
-  return String($("orthoticPayer")?.value || "").trim();
-}
-
 function isOrthotics() {
   return state.estimateType === "orthotics";
 }
 
 function isOrthoticsSelfPay() {
   return isOrthotics() && getOrthoticBasis() === "selfPay";
+}
+
+function makeId() {
+  if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
+  return `id_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 async function safeJson(res) {
@@ -114,41 +132,48 @@ async function apiPost(path, body) {
       body: JSON.stringify(body)
     });
 
+    const data = await safeJson(res);
+
     if (!res.ok) {
-      let text = "";
-      try { text = await res.text(); } catch {}
-      return { ok: false, status: res.status, errorText: text };
+      return {
+        ok: false,
+        status: res.status,
+        errorText: data?.error || `HTTP ${res.status}`
+      };
     }
 
-    const json = await safeJson(res);
-    return { ok: true, data: json };
+    return { ok: true, data };
   } catch (err) {
-    return { ok: false, status: 0, errorText: String(err?.message || err) };
+    return {
+      ok: false,
+      status: 0,
+      errorText: String(err?.message || err)
+    };
   }
 }
 
+/* =========================
+   AUTH / PROFILE
+   ========================= */
 async function loadMe() {
   const data = await apiGet("/.auth/me");
-  const principal = Array.isArray(data) ? data[0] : null;
+  const principal = Array.isArray(data) ? data[0]?.clientPrincipal : data?.clientPrincipal || null;
   state.me = principal || null;
 
   const whoAmI = $("whoAmI");
-  const adminLink = $("adminLink");
-
   if (whoAmI) {
-    if (!principal || !principal.clientPrincipal) {
-      whoAmI.textContent = "Signed in";
-    } else {
-      const cp = principal.clientPrincipal;
-      whoAmI.textContent = cp.userDetails || cp.userId || "Signed in";
-    }
+    whoAmI.textContent = principal?.userDetails || "Signed in";
   }
 
+  const adminLink = $("adminLink");
   if (adminLink) {
     adminLink.style.display = "inline-flex";
   }
 }
 
+/* =========================
+   CSV PARSING
+   ========================= */
 function splitCsvLine(line) {
   const out = [];
   let cur = "";
@@ -217,33 +242,34 @@ function parseFeeCsv(text) {
   return out;
 }
 
-
-function setFeeMapFromList(items) {
-  state.feeMap.clear();
-
-  for (const item of Array.isArray(items) ? items : []) {
-    const cpt = String(item?.cpt || "").trim();
-    if (!cpt) continue;
-
-    const active = item?.active !== false && item?.isActive !== false;
-    if (!active) continue;
-
-    state.feeMap.set(cpt, {
-      desc: String(item?.description || item?.desc || "").trim(),
-      fee: parseNum(item?.allowed ?? item?.fee)
-    });
-  }
-
-  renderFeePreview();
-  populateCptDatalist();
-}
-
+/* =========================
+   FEES
+   ========================= */
 async function loadFeesFromApi() {
-  const data = await apiGet("/api/adminCodes?activeOnly=true");
-  if (!data || !Array.isArray(data.items) || !data.items.length) return false;
+  try {
+    const data = await apiGet("/api/fees");
+    if (!data || !data.ok || !Array.isArray(data.items) || !data.items.length) {
+      return false;
+    }
 
-  setFeeMapFromList(data.items);
-  return true;
+    state.feeMap.clear();
+
+    data.items.forEach(item => {
+      const cpt = String(item.cpt || "").trim();
+      if (!cpt) return;
+
+      state.feeMap.set(cpt, {
+        desc: safeText(item.description),
+        fee: parseNum(item.allowed)
+      });
+    });
+
+    renderFeePreview();
+    populateCptDatalist();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function loadFeesFromRootCsv() {
@@ -265,12 +291,17 @@ async function loadFeesFromRootCsv() {
       const parsed = parseFeeCsv(text);
       if (!parsed.length) continue;
 
-      setFeeMapFromList(parsed.map(x => ({
-        cpt: x.cpt,
-        description: x.desc,
-        allowed: x.fee,
-        active: true
-      })));
+      state.feeMap.clear();
+
+      parsed.forEach(x => {
+        state.feeMap.set(String(x.cpt).trim(), {
+          desc: String(x.desc || "").trim(),
+          fee: parseNum(x.fee)
+        });
+      });
+
+      renderFeePreview();
+      populateCptDatalist();
       return true;
     } catch {}
   }
@@ -284,6 +315,7 @@ function populateCptDatalist() {
 
   const codes = Array.from(state.feeMap.keys()).sort((a, b) => a.localeCompare(b));
   host.innerHTML = codes.map(cpt => `<option value="${escapeHtml(cpt)}"></option>`).join("");
+
   if ($("feeCount")) $("feeCount").textContent = String(codes.length);
 }
 
@@ -307,6 +339,9 @@ function renderFeePreview() {
   `).join("");
 }
 
+/* =========================
+   PROVIDERS
+   ========================= */
 async function loadProviders() {
   const data = await apiGet("/api/providers");
   if (data && Array.isArray(data.providers)) {
@@ -331,18 +366,131 @@ function mergeProviderDatalist() {
   host.innerHTML = merged.map(p => `<option value="${escapeHtml(p)}"></option>`).join("");
 }
 
+/* =========================
+   ORTHOTICS
+   ========================= */
 function populateOrthoticPayers() {
   const select = $("orthoticPayer");
   if (!select) return;
 
   const payers = Object.keys(ORTHOTIC_ALLOWABLES).sort((a, b) => a.localeCompare(b));
-  select.innerHTML = `<option value="">Select payer</option>` +
+  select.innerHTML =
+    `<option value="">Select payer</option>` +
     payers.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
 }
 
+function applyOrthoticPayerSelection() {
+  const payer = $("orthoticPayer")?.value || "";
+  const allowable = ORTHOTIC_ALLOWABLES[payer];
+  if ($("orthoticAllowableEach") && Number.isFinite(allowable)) {
+    $("orthoticAllowableEach").value = String(allowable);
+  }
+  recalcAll();
+}
+
+function updateOrthoticBasisUI() {
+  const basis = getOrthoticBasis();
+  document.querySelectorAll(".orthotic-insurance-only").forEach(el => {
+    el.classList.toggle("hiddenBlock", basis !== "insurance");
+  });
+  document.querySelectorAll(".orthotic-selfpay-only").forEach(el => {
+    el.classList.toggle("hiddenBlock", basis !== "selfPay");
+  });
+
+  const totalAllowedLabel = $("totalAllowedLabel");
+  const estOwesLabel = $("estOwesLabel");
+  const printTotalAllowedLabel = $("printTotalAllowedLabel");
+  const printEstOwesLabel = $("printEstOwesLabel");
+
+  if (basis === "selfPay") {
+    if (totalAllowedLabel) totalAllowedLabel.textContent = "Self-Pay Total";
+    if (estOwesLabel) estOwesLabel.textContent = "Estimated Amount Due";
+    if (printTotalAllowedLabel) printTotalAllowedLabel.textContent = "Self-Pay Total";
+    if (printEstOwesLabel) printEstOwesLabel.textContent = "Estimated Amount Due";
+  } else {
+    if (totalAllowedLabel) totalAllowedLabel.textContent = "Total Allowed";
+    if (estOwesLabel) estOwesLabel.textContent = "Estimated Amount Due (OOP capped)";
+    if (printTotalAllowedLabel) printTotalAllowedLabel.textContent = "Total Allowed";
+    if (printEstOwesLabel) printEstOwesLabel.textContent = "Estimated Amount Due (OOP capped)";
+  }
+
+  renderOrthoticsPreview();
+  syncPrintView();
+}
+
+function getOrthoticLines() {
+  const basis = getOrthoticBasis();
+
+  if (basis === "selfPay") {
+    const pairTotal = parseNum($("orthoticSelfPayEach")?.value || ORTHOTIC_SELF_PAY_PAIR);
+    const each = pairTotal / 2;
+
+    return [
+      {
+        code: "L3000",
+        modifier: "RT",
+        desc: "Foot insert, removable, molded to patient model, longitudinal/metatarsal support, each",
+        billed: ORTHOTIC_BILLED_EACH,
+        allowed: each,
+        lineTotal: each
+      },
+      {
+        code: "L3000",
+        modifier: "LT",
+        desc: "Foot insert, removable, molded to patient model, longitudinal/metatarsal support, each",
+        billed: ORTHOTIC_BILLED_EACH,
+        allowed: each,
+        lineTotal: each
+      }
+    ];
+  }
+
+  const allowableEach = parseNum($("orthoticAllowableEach")?.value || 0);
+
+  return [
+    {
+      code: "L3000",
+      modifier: "RT",
+      desc: "Foot insert, removable, molded to patient model, longitudinal/metatarsal support, each",
+      billed: ORTHOTIC_BILLED_EACH,
+      allowed: allowableEach,
+      lineTotal: allowableEach
+    },
+    {
+      code: "L3000",
+      modifier: "LT",
+      desc: "Foot insert, removable, molded to patient model, longitudinal/metatarsal support, each",
+      billed: ORTHOTIC_BILLED_EACH,
+      allowed: allowableEach,
+      lineTotal: allowableEach
+    }
+  ];
+}
+
+function renderOrthoticsPreview() {
+  const host = $("orthoticsTbody");
+  if (!host) return;
+
+  const lines = getOrthoticLines();
+  host.innerHTML = lines.map((line, idx) => `
+    <tr>
+      <td>${idx + 1}</td>
+      <td>${escapeHtml(line.code)}</td>
+      <td>${escapeHtml(line.modifier)}</td>
+      <td>${escapeHtml(line.desc)}</td>
+      <td class="num">${money(line.billed)}</td>
+      <td class="num">${money(line.allowed)}</td>
+      <td class="num">${money(line.lineTotal)}</td>
+    </tr>
+  `).join("");
+}
+
+/* =========================
+   PROCEDURES
+   ========================= */
 function createEmptyRow() {
   return {
-    id: crypto.randomUUID(),
+    id: makeId(),
     cpt: "",
     desc: "",
     qty: 1,
@@ -374,6 +522,10 @@ function getRowAdjPct(index) {
   return index === 0 ? 1 : 0.5;
 }
 
+function getActiveProcedureRows() {
+  return state.rows.filter(r => safeText(r.cpt) || safeText(r.desc) || parseNum(r.allowed) > 0);
+}
+
 function renderProcedureRows() {
   const host = $("procTbody");
   if (!host) return;
@@ -384,21 +536,22 @@ function renderProcedureRows() {
     const tr = document.createElement("tr");
     const adjPct = getRowAdjPct(index);
     const adjAllowed = parseNum(row.allowed) * adjPct;
-    const lineTotal = adjAllowed * Math.max(1, parseNum(row.qty));
+    const qty = Math.max(1, parseInt(row.qty || 1, 10) || 1);
+    const lineTotal = adjAllowed * qty;
 
     tr.innerHTML = `
       <td>${index + 1}</td>
       <td>
-        <input class="rowCpt" list="cptList" type="text" placeholder="CPT" value="${escapeHtml(row.cpt)}" />
+        <input class="rowCpt input" list="cptList" type="text" placeholder="CPT" value="${escapeHtml(row.cpt)}" />
       </td>
       <td>
-        <input class="rowDesc" type="text" placeholder="Description" value="${escapeHtml(row.desc)}" />
+        <input class="rowDesc input" type="text" placeholder="Description" value="${escapeHtml(row.desc)}" />
       </td>
       <td class="num">
-        <input class="rowQty" type="number" min="1" step="1" value="${Math.max(1, parseNum(row.qty))}" />
+        <input class="rowQty input" type="number" min="1" step="1" value="${qty}" />
       </td>
       <td class="num">
-        <input class="rowAllowed" type="number" min="0" step="0.01" value="${parseNum(row.allowed)}" />
+        <input class="rowAllowed input" type="number" min="0" step="0.01" value="${parseNum(row.allowed)}" />
       </td>
       <td class="num rowAdjPct">${(adjPct * 100).toFixed(0)}%</td>
       <td class="num rowAdjAllowed">${money(adjAllowed)}</td>
@@ -415,7 +568,7 @@ function renderProcedureRows() {
     const removeBtn = tr.querySelector(".btnRemoveRow");
 
     cptInput.addEventListener("change", () => {
-      row.cpt = String(cptInput.value || "").trim();
+      row.cpt = safeText(cptInput.value).toUpperCase();
       const hit = state.feeMap.get(row.cpt);
       if (hit) {
         row.desc = hit.desc || "";
@@ -428,15 +581,15 @@ function renderProcedureRows() {
     });
 
     cptInput.addEventListener("input", () => {
-      row.cpt = String(cptInput.value || "").trim();
+      row.cpt = safeText(cptInput.value).toUpperCase();
     });
 
     descInput.addEventListener("input", () => {
-      row.desc = String(descInput.value || "").trim();
+      row.desc = safeText(descInput.value);
     });
 
     qtyInput.addEventListener("input", () => {
-      row.qty = Math.max(1, Math.floor(parseNum(qtyInput.value)));
+      row.qty = Math.max(1, Math.floor(parseNum(qtyInput.value) || 1));
       qtyInput.value = String(row.qty);
       recalcAll();
       renderProcedureRows();
@@ -453,435 +606,37 @@ function renderProcedureRows() {
     host.appendChild(tr);
   });
 
-  if (state.rows.length < state.maxRows) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td colspan="9">
-        <button id="btnAddProcedureRow" class="btn btn--ghost" type="button">Add Procedure Row</button>
-      </td>
-    `;
-    host.appendChild(tr);
-    tr.querySelector("#btnAddProcedureRow").addEventListener("click", addRow);
-  }
+  const addTr = document.createElement("tr");
+  addTr.innerHTML = `
+    <td colspan="9">
+      <button id="btnAddRow" class="btn btn--ghost" type="button">Add Procedure Row</button>
+    </td>
+  `;
+  host.appendChild(addTr);
+
+  $("btnAddRow")?.addEventListener("click", addRow);
 }
 
-function getOrthoticsRows() {
-  const basis = getOrthoticBasis();
-
-  if (basis === "selfPay") {
-    const pairTotal = Math.max(0, parseNum($("orthoticSelfPayEach")?.value || ORTHOTIC_SELF_PAY_PAIR));
-    const perSide = pairTotal / 2;
-
-    return [
-      {
-        cpt: "L3000",
-        modifier: "RT",
-        desc: "Orthotics - Right",
-        qty: 1,
-        billed: ORTHOTIC_BILLED_EACH,
-        allowed: perSide,
-        adjPct: 1,
-        adjAllowed: perSide,
-        lineTotal: perSide
-      },
-      {
-        cpt: "L3000",
-        modifier: "LT",
-        desc: "Orthotics - Left",
-        qty: 1,
-        billed: ORTHOTIC_BILLED_EACH,
-        allowed: perSide,
-        adjPct: 1,
-        adjAllowed: perSide,
-        lineTotal: perSide
-      }
-    ];
-  }
-
-  const eachAllowed = Math.max(0, parseNum($("orthoticAllowableEach")?.value));
-  return [
-    {
-      cpt: "L3000",
-      modifier: "RT",
-      desc: "Orthotics - Right",
-      qty: 1,
-      billed: ORTHOTIC_BILLED_EACH,
-      allowed: eachAllowed,
-      adjPct: 1,
-      adjAllowed: eachAllowed,
-      lineTotal: eachAllowed
-    },
-    {
-      cpt: "L3000",
-      modifier: "LT",
-      desc: "Orthotics - Left",
-      qty: 1,
-      billed: ORTHOTIC_BILLED_EACH,
-      allowed: eachAllowed,
-      adjPct: 1,
-      adjAllowed: eachAllowed,
-      lineTotal: eachAllowed
-    }
-  ];
-}
-
-function renderOrthoticsPreview() {
-  const host = $("orthoticsTbody");
-  if (!host) return;
-
-  const rows = getOrthoticsRows();
-
-  host.innerHTML = rows.map((r, idx) => `
-    <tr>
-      <td>${idx + 1}</td>
-      <td>${escapeHtml(r.cpt)}</td>
-      <td>${escapeHtml(r.modifier)}</td>
-      <td>${escapeHtml(r.desc)}</td>
-      <td class="num">${money(r.billed)}</td>
-      <td class="num">${money(r.adjAllowed)}</td>
-      <td class="num">${money(r.lineTotal)}</td>
-    </tr>
-  `).join("");
-}
-
-function getSurgicalSnapshot() {
-  const dedRem = Math.max(0, parseNum($("dedRem")?.value));
-  const coinsPct = Math.max(0, parseNum($("coinsPct")?.value));
-  const oopRem = Math.max(0, parseNum($("oopRem")?.value));
-  const copay = Math.max(0, parseNum($("copay")?.value));
-
-  const activeRows = state.rows.filter(r => r.cpt || r.desc || parseNum(r.allowed) > 0);
-
-  let totalAllowed = 0;
-  const lineRows = activeRows.map((r, idx) => {
-    const adjPct = getRowAdjPct(idx);
-    const qty = Math.max(1, Math.floor(parseNum(r.qty)));
-    const allowed = Math.max(0, parseNum(r.allowed));
-    const billed = allowed;
-    const adjAllowed = allowed * adjPct;
-    const lineTotal = adjAllowed * qty;
-    totalAllowed += lineTotal;
-
-    return {
-      ...r,
-      modifier: "",
-      qty,
-      billed,
-      allowed,
-      adjPct,
-      adjAllowed,
-      lineTotal
-    };
-  });
-
-  const dedApplied = Math.min(dedRem, totalAllowed);
-  const remainingAfterDed = Math.max(0, totalAllowed - dedApplied);
-  const coinsAmt = remainingAfterDed * coinsPct;
-  const preCapOwes = dedApplied + coinsAmt + copay;
-  const estOwes = Math.min(oopRem, preCapOwes);
-  const recDeposit = estOwes;
-  const insuranceResponsibility = Math.max(0, totalAllowed - estOwes);
-
-  return {
-    estimateType: "surgical",
-    basis: "insurance",
-    lineRows,
-    totalAllowed,
-    dedRem,
-    coinsPct,
-    oopRem,
-    copay,
-    dedApplied,
-    coinsAmt,
-    estOwes,
-    recDeposit,
-    insuranceResponsibility
-  };
-}
-
-function getOrthoticsSnapshot() {
-  const basis = getOrthoticBasis();
-  const lineRows = getOrthoticsRows();
-  const totalAllowed = lineRows.reduce((sum, r) => sum + parseNum(r.lineTotal), 0);
-
-  if (basis === "selfPay") {
-    return {
-      estimateType: "orthotics",
-      basis: "selfPay",
-      lineRows,
-      totalAllowed,
-      dedRem: 0,
-      coinsPct: 0,
-      oopRem: 0,
-      copay: 0,
-      dedApplied: 0,
-      coinsAmt: 0,
-      estOwes: totalAllowed,
-      recDeposit: totalAllowed,
-      insuranceResponsibility: 0
-    };
-  }
-
-  const dedRem = Math.max(0, parseNum($("dedRem")?.value));
-  const coinsPct = Math.max(0, parseNum($("coinsPct")?.value));
-  const oopRem = Math.max(0, parseNum($("oopRem")?.value));
-  const copay = Math.max(0, parseNum($("copay")?.value));
-
-  const dedApplied = Math.min(dedRem, totalAllowed);
-  const remainingAfterDed = Math.max(0, totalAllowed - dedApplied);
-  const coinsAmt = remainingAfterDed * coinsPct;
-  const preCapOwes = dedApplied + coinsAmt + copay;
-  const estOwes = Math.min(oopRem, preCapOwes);
-  const recDeposit = estOwes;
-  const insuranceResponsibility = Math.max(0, totalAllowed - estOwes);
-
-  return {
-    estimateType: "orthotics",
-    basis: "insurance",
-    lineRows,
-    totalAllowed,
-    dedRem,
-    coinsPct,
-    oopRem,
-    copay,
-    dedApplied,
-    coinsAmt,
-    estOwes,
-    recDeposit,
-    insuranceResponsibility
-  };
-}
-
-function getCalcSnapshot() {
-  return isOrthotics() ? getOrthoticsSnapshot() : getSurgicalSnapshot();
-}
-
-function updateSummaryLabels(snapshot = null) {
-  const s = snapshot || getCalcSnapshot();
-  const totalAllowedLabel = $("totalAllowedLabel");
-  const estOwesLabel = $("estOwesLabel");
-  const printTotalAllowedLabel = $("printTotalAllowedLabel");
-  const printEstOwesLabel = $("printEstOwesLabel");
-
-  if (s.estimateType === "orthotics" && s.basis === "selfPay") {
-    if (totalAllowedLabel) totalAllowedLabel.textContent = "Total Self-Pay Amount";
-    if (estOwesLabel) estOwesLabel.textContent = "Estimated Amount Due";
-    if (printTotalAllowedLabel) printTotalAllowedLabel.textContent = "Total Self-Pay Amount";
-    if (printEstOwesLabel) printEstOwesLabel.textContent = "Estimated Amount Due";
-  } else if (s.estimateType === "orthotics") {
-    if (totalAllowedLabel) totalAllowedLabel.textContent = "Total Allowed";
-    if (estOwesLabel) estOwesLabel.textContent = "Estimated Amount Due (OOP capped)";
-    if (printTotalAllowedLabel) printTotalAllowedLabel.textContent = "Total Allowed";
-    if (printEstOwesLabel) printEstOwesLabel.textContent = "Estimated Amount Due (OOP capped)";
-  } else {
-    if (totalAllowedLabel) totalAllowedLabel.textContent = "Total Allowed";
-    if (estOwesLabel) estOwesLabel.textContent = "Estimated Amount Due (OOP capped)";
-    if (printTotalAllowedLabel) printTotalAllowedLabel.textContent = "Total Allowed";
-    if (printEstOwesLabel) printEstOwesLabel.textContent = "Estimated Amount Due (OOP capped)";
-  }
-}
-
-function recalcAll() {
-  if (isOrthotics()) {
-    renderOrthoticsPreview();
-  }
-
-  const s = getCalcSnapshot();
-
-  if ($("totalAllowed")) $("totalAllowed").textContent = money(s.totalAllowed);
-  if ($("dedApplied")) $("dedApplied").textContent = money(s.dedApplied);
-  if ($("coinsAmt")) $("coinsAmt").textContent = money(s.coinsAmt);
-  if ($("copayOut")) $("copayOut").textContent = money(s.copay);
-  if ($("estOwes")) $("estOwes").textContent = money(s.estOwes);
-  if ($("recDeposit")) $("recDeposit").textContent = money(s.recDeposit);
-  if ($("insResp")) $("insResp").textContent = money(s.insuranceResponsibility);
-
-  updateSummaryLabels(s);
-  syncPrintView(s);
-}
-
-function setText(id, val) {
-  const el = $(id);
-  if (el) el.textContent = val;
-}
-
-function syncPrintView(snapshot = null) {
-  const s = snapshot || getCalcSnapshot();
-  const estimateTypeText = s.estimateType === "orthotics" ? "Orthotics" : "Surgical / Procedure";
-
-  if (s.estimateType === "orthotics") {
-    setText("printTopRight", "Orthotics Estimate Quote");
-    setText("printTitle", "Orthotics Estimate");
-    setText("printSubtitle", "Estimate only. Final responsibility may change after insurance adjudication.");
-    setText("printSummaryTitle", "Orthotics Summary");
-    setText("printDisclaimer", "This is an estimate only for orthotics charges. Final responsibility may be different after insurance adjudication.");
-  } else {
-    setText("printTopRight", "Surgical Deposit Quote");
-    setText("printTitle", "Surgical Deposit Estimate");
-    setText("printSubtitle", "Estimate only. Final responsibility may change after insurance adjudication.");
-    setText("printSummaryTitle", "Procedure Summary");
-    setText("printDisclaimer", "This is an estimate only for physician charges. Anesthesia and facility charges will be billed separately. Final responsibility may be different after claim processing.");
-  }
-
-  setText("printEstimateType", estimateTypeText);
-  setText("printEstOwes", money(s.estOwes));
-  setText("printRecDeposit", money(s.recDeposit));
-  setText("printDate", new Date().toLocaleDateString());
-  setText("printPreparedBy", $("preparedBy")?.value || "");
-  setText("printPatient", $("patientName")?.value || "");
-  setText("printInsurance", $("insurancePlan")?.value || "");
-  setText("printClinic", $("clinic")?.value || "");
-  setText("printProvider", $("provider")?.value || "");
-  setText("printTotalAllowed", money(s.totalAllowed));
-  setText("printDedApplied", money(s.dedApplied));
-  setText("printCoinsAmt", money(s.coinsAmt));
-  setText("printCopay", money(s.copay));
-  setText("printInsResp", money(s.insuranceResponsibility));
-  setText("printEstOwes2", money(s.estOwes));
-  setText("printDedRem", money(s.dedRem));
-  setText("printCoinsPct", pct(s.coinsPct));
-  setText("printOopRem", money(s.oopRem));
-
-  const host = $("printProcTbody");
-  if (host) {
-    host.innerHTML = s.lineRows.map(r => `
-      <tr>
-        <td>${escapeHtml(r.cpt)}</td>
-        <td>${escapeHtml(r.modifier || "")}</td>
-        <td>${escapeHtml(r.desc || "")}</td>
-        <td class="num">${r.qty}</td>
-        <td class="num">${money(parseNum(r.billed ?? 0))}</td>
-        <td class="num">${money(r.adjAllowed)}</td>
-        <td class="num">${money(r.lineTotal)}</td>
-      </tr>
-    `).join("");
-  }
-}
-
-function loadLocalHistory() {
-  try {
-    return JSON.parse(localStorage.getItem("nes_estimate_history_v4") || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function saveLocalHistory(items) {
-  localStorage.setItem("nes_estimate_history_v4", JSON.stringify(items));
-}
-
-function getHistoryFilters() {
-  return {
-    from: $("historyFrom")?.value || "",
-    to: $("historyTo")?.value || "",
-    take: Math.max(1, Math.min(200, Math.floor(parseNum($("historyTake")?.value || 50)) || 50)),
-    type: $("historyType")?.value || "",
-    search: ($("historySearch")?.value || "").trim().toLowerCase(),
-    staff: ($("historyStaff")?.value || "").trim().toLowerCase(),
-    clinic: ($("historyClinic")?.value || "").trim().toLowerCase(),
-    provider: ($("historyProvider")?.value || "").trim().toLowerCase()
-  };
-}
-
-function itemDateYmd(q) {
-  const raw = q.quoteDate || q.savedAt;
-  if (!raw) return "";
-  const d = new Date(raw);
-  if (isNaN(d.getTime())) return "";
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function applyHistoryFilters(items) {
-  const f = getHistoryFilters();
-
-  return items.filter(q => {
-    const ymd = itemDateYmd(q);
-    const patient = String(q.patientName || "").toLowerCase();
-    const staff = String(q.preparedBy || "").toLowerCase();
-    const clinic = String(q.clinic || "").toLowerCase();
-    const provider = String(q.provider || q.rows?.[0]?.provider || "").toLowerCase();
-    const type = String(q.estimateType || "surgical").toLowerCase();
-
-    if (f.from && ymd && ymd < f.from) return false;
-    if (f.to && ymd && ymd > f.to) return false;
-    if (f.type && type !== f.type.toLowerCase()) return false;
-    if (f.search && !patient.includes(f.search)) return false;
-    if (f.staff && !staff.includes(f.staff)) return false;
-    if (f.clinic && !clinic.includes(f.clinic)) return false;
-    if (f.provider && !provider.includes(f.provider)) return false;
-
-    return true;
-  }).slice(0, f.take);
-}
-
-async function loadHistory() {
-  const take = Math.max(1, Math.min(200, Math.floor(parseNum($("historyTake")?.value || 50)) || 50));
-  const api = await apiGet(`/api/quotes?take=${take}`);
-  if (api && Array.isArray(api.items)) {
-    state.history = api.items;
-    return;
-  }
-  state.history = loadLocalHistory();
-}
-
-function renderHistory() {
-  const host = $("historyTbody");
-  if (!host) return;
-
-  const items = applyHistoryFilters(state.history);
-
-  if (!items.length) {
-    host.innerHTML = `<tr><td colspan="9">No data yet.</td></tr>`;
-    return;
-  }
-
-  host.innerHTML = items.map((q, idx) => {
-    const provider = q.provider || q.rows?.[0]?.provider || "";
-    const total = parseNum(q.recommendedDeposit || q.recDeposit || q.summary?.recDeposit || q.total || 0);
-    const estDue = parseNum(q.estimatedDue || q.estOwes || q.summary?.estOwes || q.total || 0);
-    const dt = q.savedAt ? new Date(q.savedAt).toLocaleString() : "";
-    const type = q.estimateType === "orthotics" ? "Orthotics" : "Surgical / Procedure";
-
-    return `
-      <tr>
-        <td>${escapeHtml(dt)}</td>
-        <td>${escapeHtml(type)}</td>
-        <td>${escapeHtml(q.patientName || "")}</td>
-        <td>${escapeHtml(provider)}</td>
-        <td>${escapeHtml(q.clinic || "")}</td>
-        <td>${escapeHtml(q.preparedBy || "")}</td>
-        <td class="num">${money(total)}</td>
-        <td class="num">${money(estDue)}</td>
-        <td><button class="btn btn--ghost btnOpenHistory" type="button" data-idx="${idx}">Open</button></td>
-      </tr>
-    `;
-  }).join("");
-
-  host.querySelectorAll(".btnOpenHistory").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const idx = parseInt(btn.getAttribute("data-idx"), 10);
-      const item = items[idx];
-      if (item) openHistoryItem(item);
-    });
-  });
-}
-
+/* =========================
+   MODE SWITCHING
+   ========================= */
 function setEstimateType(type) {
   state.estimateType = type === "orthotics" ? "orthotics" : "surgical";
 
-  const surgicalEls = document.querySelectorAll(".surgical-only");
-  const orthoticEls = document.querySelectorAll(".orthotics-only");
+  const surgicalOnly = document.querySelectorAll(".surgical-only");
+  const orthoticsOnly = document.querySelectorAll(".orthotics-only");
   const modePill = $("modePill");
+  const quoteInputsTitle = $("quoteInputsTitle");
+  const printSummaryTitle = $("printSummaryTitle");
+  const printTitle = $("printTitle");
+  const printSubtitle = $("printSubtitle");
+  const printTopRight = $("printTopRight");
+  const printDisclaimer = $("printDisclaimer");
   const appTitle = $("appTitle");
   const appSubtitle = $("appSubtitle");
 
-  surgicalEls.forEach(el => {
-    el.classList.toggle("hiddenBlock", state.estimateType !== "surgical");
-  });
-
-  orthoticEls.forEach(el => {
-    el.classList.toggle("hiddenBlock", state.estimateType !== "orthotics");
-  });
+  surgicalOnly.forEach(el => el.classList.toggle("hiddenBlock", state.estimateType !== "surgical"));
+  orthoticsOnly.forEach(el => el.classList.toggle("hiddenBlock", state.estimateType !== "orthotics"));
 
   if (modePill) {
     modePill.textContent = state.estimateType === "orthotics"
@@ -889,333 +644,55 @@ function setEstimateType(type) {
       : "Mode: Surgical / Procedure";
   }
 
-  if (appTitle) {
-    appTitle.textContent = state.estimateType === "orthotics"
+  if (quoteInputsTitle) {
+    quoteInputsTitle.textContent = state.estimateType === "orthotics"
+      ? "3) Quote Inputs"
+      : "3) Quote Inputs";
+  }
+
+  if (printSummaryTitle) {
+    printSummaryTitle.textContent = state.estimateType === "orthotics"
+      ? "Orthotics Summary"
+      : "Procedure Summary";
+  }
+
+  if (printTitle) {
+    printTitle.textContent = state.estimateType === "orthotics"
       ? "NES Orthotics Estimate"
       : "NES Surgical Deposit Estimate";
   }
 
+  if (printSubtitle) {
+    printSubtitle.textContent = state.estimateType === "orthotics"
+      ? "Estimate only. Final responsibility may change after insurance adjudication."
+      : "Estimate only. Final responsibility may change after insurance adjudication.";
+  }
+
+  if (printTopRight) {
+    printTopRight.textContent = state.estimateType === "orthotics"
+      ? "NES Orthotics Estimate"
+      : "NES Estimate Quote";
+  }
+
+  if (printDisclaimer) {
+    printDisclaimer.textContent = state.estimateType === "orthotics"
+      ? "This is an estimate only for orthotics charges. Final responsibility may be different after claim processing."
+      : "This is an estimate only for physician charges. Anesthesia and facility charges will be billed separately. Final responsibility may be different after claim processing.";
+  }
+
+  if (appTitle) {
+    appTitle.textContent = "NES Estimate Tool";
+  }
+
   if (appSubtitle) {
     appSubtitle.textContent = state.estimateType === "orthotics"
-      ? "Two-line L3000 orthotics calculator"
-      : "Surgical / procedure estimate tool";
+      ? "Orthotics"
+      : "Surgical / Procedure and Orthotics";
   }
 
   updateOrthoticBasisUI();
   recalcAll();
-}
-
-function updateOrthoticBasisUI() {
-  const basis = getOrthoticBasis();
-  const insuranceOnly = document.querySelectorAll(".orthotic-insurance-only");
-  const selfPayOnly = document.querySelectorAll(".orthotic-selfpay-only");
-
-  insuranceOnly.forEach(el => el.classList.toggle("hiddenBlock", basis !== "insurance"));
-  selfPayOnly.forEach(el => el.classList.toggle("hiddenBlock", basis !== "selfPay"));
-
-  const copay = $("copay");
-  const dedRem = $("dedRem");
-  const coinsPct = $("coinsPct");
-  const oopRem = $("oopRem");
-
-  const disabled = isOrthotics() && basis === "selfPay";
-
-  [copay, dedRem, coinsPct, oopRem].forEach(el => {
-    if (!el) return;
-    el.disabled = disabled;
-  });
-
-  updateSummaryLabels();
-}
-
-function applyOrthoticPayerSelection() {
-  const payer = getOrthoticPayer();
-  const allowable = payer && Object.prototype.hasOwnProperty.call(ORTHOTIC_ALLOWABLES, payer)
-    ? ORTHOTIC_ALLOWABLES[payer]
-    : 0;
-
-  if ($("orthoticAllowableEach")) {
-    $("orthoticAllowableEach").value = String(allowable || 0);
-  }
-
-  if ($("insurancePlan")) {
-    $("insurancePlan").value = payer || $("insurancePlan").value || "";
-  }
-
-  recalcAll();
-}
-
-function openHistoryItem(q) {
-  const type = q.estimateType === "orthotics" ? "orthotics" : "surgical";
-  const radio = document.querySelector(`input[name="estimateType"][value="${type}"]`);
-  if (radio) {
-    radio.checked = true;
-  }
-  setEstimateType(type);
-
-  $("patientName").value = q.patientName || "";
-  $("insurancePlan").value = q.insurancePlan || "";
-  $("preparedBy").value = q.preparedBy || "";
-  $("clinic").value = q.clinic || "";
-  $("provider").value = q.provider || q.rows?.[0]?.provider || "";
-  $("copay").value = parseNum(q.copay || 0);
-  $("dedRem").value = parseNum(q.dedRem || 0);
-  $("coinsPct").value = parseNum(q.coinsPct || 0.2);
-  $("oopRem").value = parseNum(q.oopRem || 999999);
-
-  if (type === "orthotics") {
-    $("orthoticBasis").value = q.orthoticBasis === "selfPay" ? "selfPay" : "insurance";
-    updateOrthoticBasisUI();
-
-    if (q.orthoticPayer && $("orthoticPayer")) {
-      $("orthoticPayer").value = q.orthoticPayer;
-    }
-
-    if ($("orthoticAllowableEach")) {
-      $("orthoticAllowableEach").value = parseNum(q.orthoticAllowableEach || 0);
-    }
-
-    if ($("orthoticSelfPayEach")) {
-      $("orthoticSelfPayEach").value = parseNum(q.orthoticSelfPayEach || ORTHOTIC_SELF_PAY_PAIR);
-    }
-
-    renderOrthoticsPreview();
-  } else {
-    const rows = Array.isArray(q.rows) ? q.rows : [];
-    state.rows = rows.length
-      ? rows.map(r => ({
-          id: crypto.randomUUID(),
-          cpt: r.cpt || "",
-          desc: r.desc || "",
-          qty: Math.max(1, parseNum(r.qty || 1)),
-          allowed: parseNum(r.allowed ?? r.fee ?? 0)
-        }))
-      : [createEmptyRow(), createEmptyRow(), createEmptyRow()];
-
-    ensureRows(3);
-    renderProcedureRows();
-  }
-
-  recalcAll();
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
-async function refreshHistory() {
-  await loadHistory();
-  renderHistory();
-}
-
-function exportHistoryCSV() {
-  const items = applyHistoryFilters(state.history);
-  if (!items.length) {
-    alert("No history to export.");
-    return;
-  }
-
-  const out = [];
-  out.push([
-    "SavedAt",
-    "EstimateType",
-    "OrthoticBasis",
-    "PatientName",
-    "InsurancePlan",
-    "PreparedBy",
-    "Clinic",
-    "Provider",
-    "Copay",
-    "DedRem",
-    "CoinsPct",
-    "OopRem",
-    "OrthoticPayer",
-    "OrthoticAllowableEach",
-    "OrthoticSelfPayEach",
-    "CPT",
-    "Modifier",
-    "Description",
-    "Qty",
-    "Billed",
-    "Allowed",
-    "AdjPct",
-    "AdjAllowed",
-    "LineTotal",
-    "RecommendedDeposit",
-    "EstimatedDue"
-  ]);
-
-  items.forEach(q => {
-    const recDeposit = parseNum(q.recommendedDeposit || q.recDeposit || q.summary?.recDeposit || q.total || 0);
-    const estDue = parseNum(q.estimatedDue || q.estOwes || q.summary?.estOwes || q.total || 0);
-
-    (q.rows || []).forEach(r => {
-      out.push([
-        q.savedAt || "",
-        q.estimateType || "surgical",
-        q.orthoticBasis || "",
-        q.patientName || "",
-        q.insurancePlan || "",
-        q.preparedBy || "",
-        q.clinic || "",
-        q.provider || r.provider || "",
-        parseNum(q.copay || 0),
-        parseNum(q.dedRem || 0),
-        parseNum(q.coinsPct || 0),
-        parseNum(q.oopRem || 0),
-        q.orthoticPayer || "",
-        parseNum(q.orthoticAllowableEach || 0),
-        parseNum(q.orthoticSelfPayEach || 0),
-        r.cpt || "",
-        r.modifier || "",
-        r.desc || "",
-        parseNum(r.qty || 1),
-        parseNum(r.billed || 0),
-        parseNum(r.allowed ?? r.fee ?? 0),
-        parseNum(r.adjPct || 0),
-        parseNum(r.adjAllowed || 0),
-        parseNum(r.lineTotal || 0),
-        recDeposit,
-        estDue
-      ]);
-    });
-  });
-
-  const csv = out.map(row => row.map(csvCell).join(",")).join("\n");
-  download(`quote_history_${todayYmd()}.csv`, csv, "text/csv");
-}
-
-function buildQuotePayload() {
-  const snapshot = getCalcSnapshot();
-  const activeRows = snapshot.lineRows;
-
-  return {
-    savedAt: new Date().toISOString(),
-    quoteDate: todayYmd(),
-    estimateType: snapshot.estimateType,
-    orthoticBasis: snapshot.estimateType === "orthotics" ? snapshot.basis : "",
-    orthoticPayer: snapshot.estimateType === "orthotics" ? getOrthoticPayer() : "",
-    orthoticAllowableEach: snapshot.estimateType === "orthotics" ? parseNum($("orthoticAllowableEach")?.value) : 0,
-    orthoticSelfPayEach: snapshot.estimateType === "orthotics" ? parseNum($("orthoticSelfPayEach")?.value) : 0,
-    patientName: $("patientName")?.value.trim() || "",
-    insurancePlan: $("insurancePlan")?.value.trim() || "",
-    preparedBy: $("preparedBy")?.value.trim() || "",
-    clinic: $("clinic")?.value.trim() || "",
-    provider: $("provider")?.value.trim() || "",
-    copay: Math.max(0, parseNum($("copay")?.value)),
-    dedRem: Math.max(0, parseNum($("dedRem")?.value)),
-    coinsPct: Math.max(0, parseNum($("coinsPct")?.value)),
-    oopRem: Math.max(0, parseNum($("oopRem")?.value)),
-    totalAllowed: snapshot.totalAllowed,
-    dedApplied: snapshot.dedApplied,
-    coinsAmt: snapshot.coinsAmt,
-    estimatedDue: snapshot.estOwes,
-    insuranceResponsibility: snapshot.insuranceResponsibility,
-    recommendedDeposit: snapshot.recDeposit,
-    rows: activeRows.map(r => ({
-      provider: $("provider")?.value.trim() || "",
-      cpt: r.cpt || "",
-      modifier: r.modifier || "",
-      desc: r.desc || "",
-      qty: r.qty,
-      billed: parseNum(r.billed || 0),
-      allowed: r.allowed,
-      adjPct: r.adjPct,
-      adjAllowed: r.adjAllowed,
-      lineTotal: r.lineTotal
-    }))
-  };
-}
-
-async function saveQuote() {
-  const payload = buildQuotePayload();
-
-  if (!payload.patientName) {
-    alert("Enter the patient name.");
-    return;
-  }
-
-  if (!payload.rows.length) {
-    alert("Add at least one line.");
-    return;
-  }
-
-  if (payload.estimateType === "orthotics" && payload.orthoticBasis === "insurance") {
-    if (!payload.orthoticPayer) {
-      alert("Select the orthotics payer.");
-      return;
-    }
-  }
-
-  const apiSaved = await apiPost("/api/quotes", payload);
-  if (apiSaved?.ok) {
-    await refreshHistory();
-    alert("Quote saved.");
-    return;
-  }
-
-  const items = loadLocalHistory();
-  items.unshift(payload);
-  saveLocalHistory(items.slice(0, 200));
-  state.history = items.slice(0, 200);
-  renderHistory();
-
-  console.error("Quotes API failed:", apiSaved);
-  alert("Quote saved locally only. /api/quotes failed, so it will not appear in other browsers until the API storage is fixed.");
-}
-
-function clearQuote() {
-  if (!confirm("Reset the current quote?")) return;
-
-  $("patientName").value = "";
-  $("insurancePlan").value = "";
-  $("preparedBy").value = "";
-  $("clinic").value = "";
-  $("provider").value = "";
-  $("copay").value = "0";
-  $("dedRem").value = "0";
-  $("coinsPct").value = "0.20";
-  $("oopRem").value = "999999";
-
-  if ($("orthoticBasis")) $("orthoticBasis").value = "insurance";
-  if ($("orthoticPayer")) $("orthoticPayer").value = "";
-  if ($("orthoticAllowableEach")) $("orthoticAllowableEach").value = "0";
-  if ($("orthoticSelfPayEach")) $("orthoticSelfPayEach").value = String(ORTHOTIC_SELF_PAY_PAIR);
-
-  state.rows = [];
-  ensureRows(3);
-  renderProcedureRows();
-  updateOrthoticBasisUI();
-  renderOrthoticsPreview();
-  recalcAll();
-}
-
-function setHistoryToday() {
-  const ymd = todayYmd();
-  $("historyFrom").value = ymd;
-  $("historyTo").value = ymd;
-  renderHistory();
-}
-
-function setHistoryThisWeek() {
-  $("historyFrom").value = startOfWeekYmd();
-  $("historyTo").value = todayYmd();
-  renderHistory();
-}
-
-function csvCell(v) {
-  const s = String(v ?? "");
-  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
-}
-
-function download(filename, content, mime) {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  syncPrintView();
 }
 
 function wireEstimateType() {
@@ -1226,6 +703,480 @@ function wireEstimateType() {
   });
 }
 
+/* =========================
+   CALCULATIONS
+   ========================= */
+function getInputValues() {
+  return {
+    patientName: safeText($("patientName")?.value),
+    insurancePlan: safeText($("insurancePlan")?.value),
+    preparedBy: safeText($("preparedBy")?.value),
+    clinic: safeText($("clinic")?.value),
+    provider: safeText($("provider")?.value),
+    copay: Math.max(0, parseNum($("copay")?.value)),
+    dedRem: Math.max(0, parseNum($("dedRem")?.value)),
+    coinsPct: Math.max(0, parseNum($("coinsPct")?.value)),
+    oopRem: Math.max(0, parseNum($("oopRem")?.value))
+  };
+}
+
+function calculateSurgicalTotals() {
+  const inputs = getInputValues();
+  const activeRows = getActiveProcedureRows();
+
+  let totalAllowed = 0;
+
+  activeRows.forEach((row, index) => {
+    const qty = Math.max(1, parseInt(row.qty || 1, 10) || 1);
+    const allowed = Math.max(0, parseNum(row.allowed));
+    const adjPct = getRowAdjPct(index);
+    const adjAllowed = allowed * adjPct;
+    totalAllowed += adjAllowed * qty;
+  });
+
+  const dedApplied = Math.min(inputs.dedRem, totalAllowed);
+  const remainingAfterDed = Math.max(0, totalAllowed - dedApplied);
+  const coinsAmt = remainingAfterDed * inputs.coinsPct;
+  const rawPatient = dedApplied + coinsAmt + inputs.copay;
+  const estOwes = Math.min(rawPatient, inputs.oopRem > 0 ? inputs.oopRem : rawPatient);
+  const insResp = Math.max(0, totalAllowed - estOwes);
+  const recDeposit = estOwes;
+
+  return {
+    totalAllowed,
+    dedApplied,
+    coinsAmt,
+    copay: inputs.copay,
+    estOwes,
+    insResp,
+    recDeposit
+  };
+}
+
+function calculateOrthoticsTotals() {
+  const inputs = getInputValues();
+  const lines = getOrthoticLines();
+  const totalAllowed = lines.reduce((sum, x) => sum + parseNum(x.lineTotal), 0);
+
+  if (isOrthoticsSelfPay()) {
+    const estOwes = totalAllowed;
+    return {
+      totalAllowed,
+      dedApplied: 0,
+      coinsAmt: 0,
+      copay: 0,
+      estOwes,
+      insResp: 0,
+      recDeposit: estOwes
+    };
+  }
+
+  const dedApplied = Math.min(inputs.dedRem, totalAllowed);
+  const remainingAfterDed = Math.max(0, totalAllowed - dedApplied);
+  const coinsAmt = remainingAfterDed * inputs.coinsPct;
+  const rawPatient = dedApplied + coinsAmt + inputs.copay;
+  const estOwes = Math.min(rawPatient, inputs.oopRem > 0 ? inputs.oopRem : rawPatient);
+  const insResp = Math.max(0, totalAllowed - estOwes);
+  const recDeposit = estOwes;
+
+  return {
+    totalAllowed,
+    dedApplied,
+    coinsAmt,
+    copay: inputs.copay,
+    estOwes,
+    insResp,
+    recDeposit
+  };
+}
+
+function recalcAll() {
+  const totals = isOrthotics() ? calculateOrthoticsTotals() : calculateSurgicalTotals();
+
+  if ($("totalAllowed")) $("totalAllowed").textContent = money(totals.totalAllowed);
+  if ($("dedApplied")) $("dedApplied").textContent = money(totals.dedApplied);
+  if ($("coinsAmt")) $("coinsAmt").textContent = money(totals.coinsAmt);
+  if ($("copayOut")) $("copayOut").textContent = money(totals.copay);
+  if ($("estOwes")) $("estOwes").textContent = money(totals.estOwes);
+  if ($("insResp")) $("insResp").textContent = money(totals.insResp);
+  if ($("recDeposit")) $("recDeposit").textContent = money(totals.recDeposit);
+
+  syncPrintView();
+  return totals;
+}
+
+/* =========================
+   PRINT
+   ========================= */
+function getPrintableLines() {
+  if (isOrthotics()) {
+    return getOrthoticLines().map(line => ({
+      code: line.code,
+      modifier: line.modifier,
+      desc: line.desc,
+      qty: 1,
+      billed: line.billed,
+      adjAllowed: line.allowed,
+      lineTotal: line.lineTotal
+    }));
+  }
+
+  return getActiveProcedureRows().map((row, index) => {
+    const qty = Math.max(1, parseInt(row.qty || 1, 10) || 1);
+    const allowed = Math.max(0, parseNum(row.allowed));
+    const adjPct = getRowAdjPct(index);
+    const adjAllowed = allowed * adjPct;
+    return {
+      code: row.cpt,
+      modifier: "",
+      desc: row.desc,
+      qty,
+      billed: allowed,
+      adjAllowed,
+      lineTotal: adjAllowed * qty
+    };
+  });
+}
+
+function syncPrintView() {
+  const totals = isOrthotics() ? calculateOrthoticsTotals() : calculateSurgicalTotals();
+  const inputs = getInputValues();
+  const lines = getPrintableLines();
+
+  if ($("printDate")) $("printDate").textContent = new Date().toLocaleDateString();
+  if ($("printPreparedBy")) $("printPreparedBy").textContent = inputs.preparedBy;
+  if ($("printPatient")) $("printPatient").textContent = inputs.patientName;
+  if ($("printInsurance")) $("printInsurance").textContent = inputs.insurancePlan;
+  if ($("printClinic")) $("printClinic").textContent = inputs.clinic;
+  if ($("printProvider")) $("printProvider").textContent = inputs.provider;
+
+  if ($("printTotalAllowed")) $("printTotalAllowed").textContent = money(totals.totalAllowed);
+  if ($("printDedApplied")) $("printDedApplied").textContent = money(totals.dedApplied);
+  if ($("printCoinsAmt")) $("printCoinsAmt").textContent = money(totals.coinsAmt);
+  if ($("printCopay")) $("printCopay").textContent = money(totals.copay);
+  if ($("printInsResp")) $("printInsResp").textContent = money(totals.insResp);
+  if ($("printEstOwes")) $("printEstOwes").textContent = money(totals.estOwes);
+  if ($("printEstOwes2")) $("printEstOwes2").textContent = money(totals.estOwes);
+  if ($("printRecDeposit")) $("printRecDeposit").textContent = money(totals.recDeposit);
+
+  if ($("printDedRem")) $("printDedRem").textContent = money(inputs.dedRem);
+  if ($("printCoinsPct")) $("printCoinsPct").textContent = pct(inputs.coinsPct);
+  if ($("printOopRem")) $("printOopRem").textContent = money(inputs.oopRem);
+  if ($("printEstimateType")) {
+    $("printEstimateType").textContent = isOrthotics() ? "Orthotics" : "Surgical / Procedure";
+  }
+
+  const tbody = $("printProcTbody");
+  if (tbody) {
+    tbody.innerHTML = lines.map(line => `
+      <tr>
+        <td>${escapeHtml(line.code || "")}</td>
+        <td>${escapeHtml(line.modifier || "")}</td>
+        <td>${escapeHtml(line.desc || "")}</td>
+        <td class="num">${escapeHtml(String(line.qty || 1))}</td>
+        <td class="num">${money(parseNum(line.billed))}</td>
+        <td class="num">${money(parseNum(line.adjAllowed))}</td>
+        <td class="num">${money(parseNum(line.lineTotal))}</td>
+      </tr>
+    `).join("");
+  }
+}
+
+/* =========================
+   HISTORY / QUOTES
+   ========================= */
+function buildQuotePayload() {
+  const inputs = getInputValues();
+  const totals = isOrthotics() ? calculateOrthoticsTotals() : calculateSurgicalTotals();
+
+  const payload = {
+    estimateType: state.estimateType,
+    patientName: inputs.patientName,
+    insurancePlan: inputs.insurancePlan,
+    preparedBy: inputs.preparedBy,
+    clinic: inputs.clinic,
+    provider: inputs.provider,
+    copay: inputs.copay,
+    dedRem: inputs.dedRem,
+    coinsPct: inputs.coinsPct,
+    oopRem: inputs.oopRem,
+    totalAllowed: totals.totalAllowed,
+    dedApplied: totals.dedApplied,
+    coinsAmt: totals.coinsAmt,
+    estOwes: totals.estOwes,
+    insResp: totals.insResp,
+    recDeposit: totals.recDeposit,
+    quoteDate: new Date().toISOString()
+  };
+
+  if (isOrthotics()) {
+    payload.orthotics = {
+      basis: getOrthoticBasis(),
+      payer: safeText($("orthoticPayer")?.value),
+      allowableEach: parseNum($("orthoticAllowableEach")?.value),
+      selfPayPair: parseNum($("orthoticSelfPayEach")?.value || ORTHOTIC_SELF_PAY_PAIR),
+      lines: getOrthoticLines()
+    };
+    payload.lines = getOrthoticLines();
+  } else {
+    payload.lines = getActiveProcedureRows().map((row, index) => {
+      const qty = Math.max(1, parseInt(row.qty || 1, 10) || 1);
+      const allowed = Math.max(0, parseNum(row.allowed));
+      const adjPct = getRowAdjPct(index);
+      const adjAllowed = allowed * adjPct;
+      return {
+        cpt: row.cpt,
+        description: row.desc,
+        qty,
+        allowed,
+        adjPct,
+        adjAllowed,
+        lineTotal: adjAllowed * qty
+      };
+    });
+  }
+
+  return payload;
+}
+
+async function saveQuote() {
+  const payload = buildQuotePayload();
+  const result = await apiPost("/api/quote", payload);
+
+  if (!result.ok) {
+    alert(`Could not save quote. ${result.errorText || ""}`.trim());
+    return;
+  }
+
+  await loadHistory();
+  renderHistory();
+  alert("Quote saved.");
+}
+
+async function loadHistory() {
+  const data = await apiGet("/api/quotes");
+  state.history = Array.isArray(data?.items) ? data.items : [];
+  state.historyLoaded = true;
+}
+
+function getHistoryFilters() {
+  return {
+    from: safeText($("historyFrom")?.value),
+    to: safeText($("historyTo")?.value),
+    take: Math.max(1, Math.min(200, parseInt($("historyTake")?.value || "50", 10) || 50)),
+    type: safeText($("historyType")?.value),
+    search: safeText($("historySearch")?.value).toLowerCase(),
+    staff: safeText($("historyStaff")?.value).toLowerCase(),
+    clinic: safeText($("historyClinic")?.value).toLowerCase(),
+    provider: safeText($("historyProvider")?.value).toLowerCase()
+  };
+}
+
+function renderHistory() {
+  const tbody = $("historyTbody");
+  if (!tbody) return;
+
+  if (!state.historyLoaded) {
+    tbody.innerHTML = `<tr><td colspan="9">Loading...</td></tr>`;
+    return;
+  }
+
+  const f = getHistoryFilters();
+
+  let items = [...state.history];
+
+  if (f.from) {
+    const fromTs = new Date(`${f.from}T00:00:00`).getTime();
+    items = items.filter(x => new Date(x.quoteDate || x.createdAt || x.timestamp || 0).getTime() >= fromTs);
+  }
+
+  if (f.to) {
+    const toTs = new Date(`${f.to}T23:59:59`).getTime();
+    items = items.filter(x => new Date(x.quoteDate || x.createdAt || x.timestamp || 0).getTime() <= toTs);
+  }
+
+  if (f.type) {
+    items = items.filter(x => String(x.estimateType || "").toLowerCase() === f.type.toLowerCase());
+  }
+
+  if (f.search) {
+    items = items.filter(x => String(x.patientName || "").toLowerCase().includes(f.search));
+  }
+
+  if (f.staff) {
+    items = items.filter(x =>
+      String(x.preparedBy || x.userDetails || x.createdBy || "").toLowerCase().includes(f.staff)
+    );
+  }
+
+  if (f.clinic) {
+    items = items.filter(x => String(x.clinic || "").toLowerCase().includes(f.clinic));
+  }
+
+  if (f.provider) {
+    items = items.filter(x => String(x.provider || "").toLowerCase().includes(f.provider));
+  }
+
+  items.sort((a, b) =>
+    new Date(b.quoteDate || b.createdAt || b.timestamp || 0).getTime() -
+    new Date(a.quoteDate || a.createdAt || a.timestamp || 0).getTime()
+  );
+
+  items = items.slice(0, f.take);
+
+  if (!items.length) {
+    tbody.innerHTML = `<tr><td colspan="9">No data yet.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = items.map(item => {
+    const dt = new Date(item.quoteDate || item.createdAt || item.timestamp || Date.now());
+    return `
+      <tr>
+        <td>${escapeHtml(dt.toLocaleString())}</td>
+        <td>${escapeHtml(item.estimateType === "orthotics" ? "Orthotics" : "Surgical / Procedure")}</td>
+        <td>${escapeHtml(item.patientName || "")}</td>
+        <td>${escapeHtml(item.provider || "")}</td>
+        <td>${escapeHtml(item.clinic || "")}</td>
+        <td>${escapeHtml(item.preparedBy || item.userDetails || item.createdBy || "")}</td>
+        <td class="num">${money(parseNum(item.recDeposit))}</td>
+        <td class="num">${money(parseNum(item.estOwes))}</td>
+        <td><button class="btn btn--ghost btnOpenHistory" type="button" data-id="${escapeHtml(String(item.RowKey || item.id || item.quoteId || ""))}">Open</button></td>
+      </tr>
+    `;
+  }).join("");
+
+  tbody.querySelectorAll(".btnOpenHistory").forEach((btn, idx) => {
+    btn.addEventListener("click", () => openHistoryItem(items[idx]));
+  });
+}
+
+function openHistoryItem(item) {
+  if (!item) return;
+
+  const estimateType = item.estimateType === "orthotics" ? "orthotics" : "surgical";
+  const radio = document.querySelector(`input[name="estimateType"][value="${estimateType}"]`);
+  if (radio) radio.checked = true;
+  setEstimateType(estimateType);
+
+  $("patientName").value = item.patientName || "";
+  $("insurancePlan").value = item.insurancePlan || "";
+  $("preparedBy").value = item.preparedBy || item.userDetails || item.createdBy || "";
+  $("clinic").value = item.clinic || "";
+  $("provider").value = item.provider || "";
+  $("copay").value = parseNum(item.copay || 0);
+  $("dedRem").value = parseNum(item.dedRem || 0);
+  $("coinsPct").value = parseNum(item.coinsPct || 0);
+  $("oopRem").value = parseNum(item.oopRem || 0);
+
+  if (estimateType === "orthotics") {
+    const orth = item.orthotics || {};
+    $("orthoticBasis").value = orth.basis === "selfPay" ? "selfPay" : "insurance";
+    updateOrthoticBasisUI();
+    $("orthoticPayer").value = orth.payer || "";
+    if (orth.allowableEach != null) $("orthoticAllowableEach").value = parseNum(orth.allowableEach);
+    if (orth.selfPayPair != null) $("orthoticSelfPayEach").value = parseNum(orth.selfPayPair);
+    renderOrthoticsPreview();
+  } else {
+    const lines = Array.isArray(item.lines) ? item.lines : [];
+    state.rows = lines.map(line => ({
+      id: makeId(),
+      cpt: safeText(line.cpt),
+      desc: safeText(line.description),
+      qty: Math.max(1, parseInt(line.qty || 1, 10) || 1),
+      allowed: parseNum(line.allowed)
+    }));
+    ensureRows(3);
+    renderProcedureRows();
+  }
+
+  recalcAll();
+  syncPrintView();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function exportHistoryCSV() {
+  const rows = [["Date/Time", "Type", "Patient", "Provider", "Clinic", "Staff", "Recommended Deposit", "Estimated Due"]];
+  const tbody = $("historyTbody");
+  if (!tbody) return;
+
+  const items = [...tbody.querySelectorAll("tr")].map(tr =>
+    [...tr.querySelectorAll("td")].slice(0, 8).map(td => td.textContent.trim())
+  );
+
+  items.forEach(row => {
+    if (row.length) rows.push(row);
+  });
+
+  const csv = rows.map(row =>
+    row.map(v => {
+      const s = String(v ?? "");
+      return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+    }).join(",")
+  ).join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "quote-history.csv";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function refreshHistory() {
+  loadHistory().then(renderHistory);
+}
+
+function setHistoryToday() {
+  if ($("historyFrom")) $("historyFrom").value = todayYmd();
+  if ($("historyTo")) $("historyTo").value = todayYmd();
+  renderHistory();
+}
+
+function setHistoryThisWeek() {
+  if ($("historyFrom")) $("historyFrom").value = startOfWeekYmd();
+  if ($("historyTo")) $("historyTo").value = todayYmd();
+  renderHistory();
+}
+
+/* =========================
+   RESET
+   ========================= */
+function clearQuote() {
+  $("patientName").value = "";
+  $("insurancePlan").value = "";
+  $("preparedBy").value = "";
+  $("clinic").value = "";
+  $("provider").value = "";
+  $("copay").value = "0";
+  $("dedRem").value = "0";
+  $("coinsPct").value = "0.20";
+  $("oopRem").value = "999999";
+
+  $("orthoticBasis").value = "insurance";
+  $("orthoticPayer").value = "";
+  $("orthoticAllowableEach").value = "0";
+  $("orthoticSelfPayEach").value = String(ORTHOTIC_SELF_PAY_PAIR);
+
+  state.rows = [];
+  ensureRows(3);
+  renderProcedureRows();
+  renderOrthoticsPreview();
+
+  const surgicalRadio = document.querySelector('input[name="estimateType"][value="surgical"]');
+  if (surgicalRadio) surgicalRadio.checked = true;
+
+  setEstimateType("surgical");
+  recalcAll();
+  syncPrintView();
+}
+
+/* =========================
+   EVENTS
+   ========================= */
 function wireOrthoticsInputs() {
   $("orthoticBasis")?.addEventListener("change", () => {
     updateOrthoticBasisUI();
@@ -1307,7 +1258,10 @@ function wireInputs() {
 
       state.feeMap.clear();
       parsed.forEach(x => {
-        state.feeMap.set(x.cpt, { desc: x.desc, fee: x.fee });
+        state.feeMap.set(String(x.cpt || "").trim(), {
+          desc: String(x.desc || "").trim(),
+          fee: parseNum(x.fee)
+        });
       });
 
       renderFeePreview();
@@ -1321,16 +1275,22 @@ function wireInputs() {
   wireOrthoticsInputs();
 }
 
+/* =========================
+   INIT
+   ========================= */
 async function init() {
   await loadMe();
   await loadProviders();
   populateOrthoticPayers();
 
   let feesOk = await loadFeesFromApi();
-  if (!feesOk) feesOk = await loadFeesFromRootCsv();
 
   if (!feesOk) {
-    alert("Could not load codes from the Admin Code Manager or the site root CSV. You can still upload the fee CSV manually.");
+    feesOk = await loadFeesFromRootCsv();
+  }
+
+  if (!feesOk) {
+    alert("Could not load the fee schedule from /api/fees or the site root CSV. You can still upload the fee CSV manually.");
   }
 
   state.rows = [];
@@ -1350,6 +1310,7 @@ async function init() {
 
   setEstimateType("surgical");
   syncPrintView();
+  recalcAll();
 }
 
 document.addEventListener("DOMContentLoaded", init);
