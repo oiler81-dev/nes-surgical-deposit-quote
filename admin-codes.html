@@ -1,141 +1,337 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>NES Code Manager</title>
-  <link rel="stylesheet" href="styles.css" />
   <style>
-    .pageWrap { max-width: 1280px; margin: 0 auto; padding: 20px; }
-    .toolbarRow { display:flex; gap:12px; flex-wrap:wrap; align-items:end; }
-    .toolbarRow > div { min-width: 180px; flex:1; }
-    .statusBar { margin-top:12px; color:#667085; font-size:14px; }
-    .formGrid { display:grid; grid-template-columns: 160px 1fr 180px 120px 140px; gap:12px; }
-    .hidden { display:none !important; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .numInput { text-align:right; }
-    .rowActions { display:flex; gap:8px; flex-wrap:wrap; }
-    @media (max-width: 1000px) {
-      .formGrid { grid-template-columns: 1fr; }
+    :root{
+      --bg:#f3f6fa;
+      --card:#ffffff;
+      --line:#d7e0ea;
+      --text:#0f2744;
+      --muted:#5b6b7c;
+      --navy:#123b68;
+      --navy-2:#0e3157;
+      --pill:#eef3f8;
+      --danger:#b42318;
+      --success:#067647;
+      --shadow:0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.1);
+      --radius:16px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      background:var(--bg);
+      color:var(--text);
+    }
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:10px 18px;
+      background:#eef3f8;
+      border-bottom:1px solid var(--line);
+    }
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:14px;
+    }
+    .brand img{
+      width:28px;
+      height:28px;
+      object-fit:contain;
+    }
+    .brand-text h1{
+      margin:0;
+      font-size:18px;
+      line-height:1.2;
+    }
+    .brand-text p{
+      margin:2px 0 0 0;
+      color:var(--muted);
+      font-size:14px;
+    }
+    .top-actions{
+      display:flex;
+      gap:10px;
+    }
+    .btn{
+      border:1px solid #cbd5df;
+      background:#fff;
+      color:var(--text);
+      border-radius:14px;
+      padding:10px 14px;
+      font-weight:600;
+      cursor:pointer;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .btn.primary{
+      background:var(--navy);
+      color:#fff;
+      border-color:var(--navy);
+    }
+    .btn:hover{filter:brightness(.98)}
+    .wrap{
+      max-width:1180px;
+      margin:14px auto 28px;
+      padding:0 14px;
+    }
+    .pills{
+      display:flex;
+      gap:10px;
+      margin-bottom:12px;
+      flex-wrap:wrap;
+    }
+    .pill{
+      background:var(--card);
+      border:1px solid var(--line);
+      color:var(--text);
+      padding:8px 14px;
+      border-radius:999px;
+      font-weight:700;
+      box-shadow:var(--shadow);
+      font-size:14px;
+    }
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:20px;
+      box-shadow:var(--shadow);
+      padding:14px;
+      margin-bottom:14px;
+    }
+    .card h2{
+      margin:0 0 10px;
+      font-size:18px;
+    }
+    .notice{
+      padding:14px;
+      border-radius:16px;
+      border:1px solid var(--line);
+      background:#fff;
+      margin-bottom:14px;
+    }
+    .notice h3{
+      margin:0 0 8px;
+      font-size:16px;
+    }
+    .notice.error{
+      border-color:#f1c0c0;
+      background:#fff7f7;
+    }
+    .notice.success{
+      border-color:#b7e4c7;
+      background:#f4fff8;
+    }
+    .grid{
+      display:grid;
+      gap:12px;
+    }
+    .grid.cols-3{
+      grid-template-columns:1fr 1fr 1fr;
+    }
+    .grid.cols-4{
+      grid-template-columns:1.1fr 2fr 1fr .9fr;
+    }
+    label{
+      display:block;
+      font-size:14px;
+      font-weight:700;
+      margin-bottom:6px;
+    }
+    input, select{
+      width:100%;
+      border:1px solid #cfd8e3;
+      border-radius:14px;
+      padding:12px 14px;
+      font-size:16px;
+      background:#fff;
+      color:var(--text);
+    }
+    .row-actions{
+      display:flex;
+      gap:10px;
+      margin-top:12px;
+      flex-wrap:wrap;
+    }
+    table{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0;
+      border:1px solid var(--line);
+      border-radius:16px;
+      overflow:hidden;
+    }
+    thead th{
+      background:#eef3f8;
+      text-align:left;
+      padding:12px 12px;
+      font-size:14px;
+    }
+    tbody td{
+      padding:12px;
+      border-top:1px solid var(--line);
+      font-size:14px;
+      vertical-align:top;
+    }
+    .actions{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .mini{
+      padding:8px 10px;
+      border-radius:10px;
+      font-size:13px;
+      font-weight:700;
+      cursor:pointer;
+      border:1px solid #cbd5df;
+      background:#fff;
+    }
+    .mini.primary{
+      background:var(--navy);
+      color:#fff;
+      border-color:var(--navy);
+    }
+    .mini.danger{
+      color:var(--danger);
+      border-color:#efcaca;
+      background:#fff;
+    }
+    .status-active{
+      color:var(--success);
+      font-weight:700;
+    }
+    .status-inactive{
+      color:var(--danger);
+      font-weight:700;
+    }
+    .muted{color:var(--muted)}
+    .hidden{display:none !important}
+    .empty{
+      padding:16px;
+      color:var(--muted);
+    }
+    @media (max-width: 900px){
+      .grid.cols-3,.grid.cols-4{grid-template-columns:1fr}
+      .topbar{align-items:flex-start; gap:10px; flex-direction:column}
+      .top-actions{width:100%; flex-wrap:wrap}
     }
   </style>
 </head>
 <body>
   <header class="topbar">
-    <div class="wrap topbar__inner">
-      <div class="brand">
-        <img class="brand__logo" src="assets/nes-logo.png" alt="Northwest Extremity Specialists logo" />
-        <div class="brand__text">
-          <div class="brand__title">NES Code Manager</div>
-          <div class="brand__sub">Admin maintenance for CPT fee schedule</div>
-        </div>
+    <div class="brand">
+      <img src="assets/nes-logo.png" alt="NES logo">
+      <div class="brand-text">
+        <h1>NES Code Manager</h1>
+        <p>Admin maintenance for CPT fee schedule</p>
       </div>
-
-      <div class="topbar__actions">
-        <a class="btn btn--ghost" href="/">Back to Tool</a>
-        <a class="btn btn--ghost" href="/admin.html">Admin</a>
-        <a class="btn btn--ghost" href="/.auth/logout">Logout</a>
-      </div>
+    </div>
+    <div class="top-actions">
+      <a class="btn" href="/">Back to Tool</a>
+      <a class="btn" href="/admin.html">Admin</a>
+      <a class="btn" href="/.auth/logout">Logout</a>
     </div>
   </header>
 
-  <main class="pageWrap">
-    <div class="pillRow">
-      <div class="pill pill--muted" id="whoAmI">Signed in</div>
-      <div class="pill pill--muted" id="rolePill">Checking access...</div>
+  <main class="wrap">
+    <div class="pills">
+      <div class="pill" id="authPill">Checking sign-in...</div>
+      <div class="pill" id="rolePill">Checking access...</div>
     </div>
 
-    <section class="card" id="accessDeniedCard" style="display:none;">
-      <div class="card__header"><h2>Access denied</h2></div>
+    <section id="errorBox" class="notice error hidden">
+      <h3>Issue</h3>
+      <div id="errorText"></div>
+    </section>
+
+    <section id="successBox" class="notice success hidden">
+      <h3>Saved</h3>
+      <div id="successText"></div>
+    </section>
+
+    <section id="deniedBox" class="notice error hidden">
+      <h3>Access denied</h3>
       <div>You are signed in, but your account does not have the admin role required to manage fee schedule codes.</div>
     </section>
 
-    <section class="card" id="managerCard" style="display:none;">
-      <div class="card__header">
-        <h2>Add or update codes</h2>
-      </div>
-
-      <div class="formGrid">
+    <section id="editorCard" class="card hidden">
+      <h2>Add or update code</h2>
+      <div class="grid cols-4">
         <div>
-          <label class="label">CPT</label>
-          <input id="codeCpt" class="input mono" type="text" placeholder="29881" />
+          <label for="cptInput">CPT</label>
+          <input id="cptInput" placeholder="e.g. 29881">
         </div>
         <div>
-          <label class="label">Description</label>
-          <input id="codeDescription" class="input" type="text" placeholder="Arthroscopy, knee, meniscectomy" />
+          <label for="descInput">Description</label>
+          <input id="descInput" placeholder="Procedure description">
         </div>
         <div>
-          <label class="label">Allowed</label>
-          <input id="codeAllowed" class="input numInput" type="number" min="0" step="0.01" placeholder="0.00" />
+          <label for="allowedInput">Allowed</label>
+          <input id="allowedInput" type="number" step="0.01" placeholder="0.00">
         </div>
         <div>
-          <label class="label">Active</label>
-          <select id="codeActive" class="input">
-            <option value="true" selected>Yes</option>
-            <option value="false">No</option>
-          </select>
-        </div>
-        <div>
-          <label class="label">Mode</label>
-          <select id="formMode" class="input">
-            <option value="add" selected>Add New</option>
-            <option value="edit">Edit Existing</option>
+          <label for="activeInput">Active</label>
+          <select id="activeInput">
+            <option value="true">Active</option>
+            <option value="false">Inactive</option>
           </select>
         </div>
       </div>
-
-      <div class="actions">
-        <button id="btnSaveCode" class="btn" type="button">Save Code</button>
-        <button id="btnClearForm" class="btn btn--ghost" type="button">Clear</button>
+      <div class="row-actions">
+        <button class="btn primary" id="saveBtn" type="button">Save Code</button>
+        <button class="btn" id="clearBtn" type="button">Clear</button>
       </div>
-
-      <div class="statusBar" id="formStatus">Use this page to add new CPTs, update allowed amounts, or deactivate old codes.</div>
     </section>
 
     <section class="card">
-      <div class="card__header">
-        <h2>Fee schedule</h2>
-      </div>
-
-      <div class="toolbarRow">
+      <h2>Fee schedule</h2>
+      <div class="grid cols-3">
         <div>
-          <label class="label">Search</label>
-          <input id="searchText" class="input" type="text" placeholder="Search CPT or description" />
+          <label for="searchInput">Search</label>
+          <input id="searchInput" placeholder="Search CPT or description">
         </div>
         <div>
-          <label class="label">Status</label>
-          <select id="statusFilter" class="input">
-            <option value="all" selected>All</option>
+          <label for="statusFilter">Status</label>
+          <select id="statusFilter">
+            <option value="all">All</option>
             <option value="active">Active only</option>
             <option value="inactive">Inactive only</option>
           </select>
         </div>
         <div>
-          <label class="label">Rows</label>
-          <input id="maxRows" class="input" type="number" min="10" max="1000" step="10" value="250" />
+          <label for="rowLimit">Rows</label>
+          <input id="rowLimit" type="number" min="1" max="1000" value="250">
         </div>
       </div>
 
-      <div class="actions">
-        <button id="btnRefreshCodes" class="btn" type="button">Refresh</button>
-        <button id="btnExportCodes" class="btn btn--ghost" type="button">Export CSV</button>
+      <div class="row-actions">
+        <button class="btn primary" id="refreshBtn" type="button">Refresh</button>
+        <button class="btn" id="exportBtn" type="button">Export CSV</button>
       </div>
 
-      <div class="tableWrap">
-        <table class="table">
+      <div style="margin-top:10px; overflow:auto;">
+        <table>
           <thead>
             <tr>
               <th>CPT</th>
               <th>Description</th>
-              <th class="num">Allowed</th>
+              <th>Allowed</th>
               <th>Active</th>
               <th>Updated</th>
               <th>By</th>
               <th>Actions</th>
             </tr>
           </thead>
-          <tbody id="codesTbody">
-            <tr><td colspan="7">Loading…</td></tr>
+          <tbody id="codesBody">
+            <tr><td colspan="7" class="empty">Loading...</td></tr>
           </tbody>
         </table>
       </div>
